@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'David ABT';
+  src: url('https://fonts.cdnfonts.com/s/14805/DavidABT.woff2') format('woff2'),
+       url('https://fonts.cdnfonts.com/s/14805/DavidABT.woff') format('woff');
+  font-display: swap;
+  font-weight: 400;
+  font-style: normal;
+}
+
+@layer components {
+  .brand-wordmark {
+    font-family: 'David ABT', sans-serif;
+    font-weight: 400;
+  }
+}
+
 /* === Brand base already present === */
 :root { color-scheme: dark; }
 body { @apply bg-slatebg text-white antialiased; }
