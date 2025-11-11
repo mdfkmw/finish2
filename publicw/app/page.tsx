@@ -213,7 +213,7 @@ export default function Page() {
       }
     } catch (err: any) {
       if (err instanceof ApiError) {
-        throw new Error(err.message)
+        throw err
       }
       if (err instanceof Error) {
         throw err
