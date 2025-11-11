@@ -1,0 +1,106 @@
+@import url('https://fonts.cdnfonts.com/css/davida-bold');
+
+@tailwind base;
+
+/* === Brand base already present === */
+:root { color-scheme: dark; }
+body { @apply bg-slatebg text-white antialiased; }
+
+.input { @apply w-full rounded-xl bg-white/5 text-white placeholder-white/50 px-4 py-3 outline-none ring-1 ring-white/10 focus:ring-brand shadow-soft; }
+.select {
+  @apply input appearance-none;
+  background-color: rgba(15, 19, 36, 0.9);
+  color: #fff;
+}
+.select option {
+  background-color: #0f1324;
+  color: #fff;
+}
+.btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-6 py-3 font-medium shadow-soft hover:bg-brand-600 active:bg-brand-700 transition; }
+
+
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .brand-wordmark {
+    font-family: 'Davida Bold', sans-serif;
+    font-weight: 400; /* fontul e deja bold */
+      color: #cbcbcb;
+  }
+}
+
+
+
+/* =============== EFFECT #1: HERO AURORA BLOBS (from HTML demo) =============== */
+.hero-aurora {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(165deg, #0a0e27 0%, #1a1f3a 50%, #2a2f4a 100%);
+}
+.hero-aurora::before,
+.hero-aurora::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.hero-aurora::before {
+  width: 500px; height: 500px;
+  right: -250px; top: -250px;
+  background: radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%);
+  filter: blur(0.2px);
+}
+.hero-aurora::after {
+  width: 400px; height: 400px;
+  left: -200px; bottom: -200px;
+  background: radial-gradient(circle, rgba(139,92,246,0.10) 0%, transparent 70%);
+  filter: blur(0.2px);
+}
+
+/* =============== EFFECT #2: TRIP CARD HOVER STRIPE + GLASS BLUR =============== */
+.trip-card {
+  position: relative;
+  background: rgba(30,41,59,0.5);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 20px;
+  transition: transform .3s ease, background .3s ease, border-color .3s ease;
+}
+.trip-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: linear-gradient(180deg, #2FA84F 0%, #2ECBC6 100%); /* brand → teal */
+  opacity: 0;
+  transition: opacity .3s ease;
+  border-top-left-radius: 20px;
+  border-bottom-left-radius: 20px;
+}
+.trip-card:hover {
+  transform: translateX(5px);
+  background: rgba(30,41,59,0.7);
+  border-color: rgba(46,203,198,0.35);
+}
+.trip-card:hover::before { opacity: 1; }
+
+/* Small decorative line between cities */
+.route-line-demo {
+  display: flex; align-items: center; gap: 10px;
+  color: rgba(255,255,255,0.55); font-size: 14px;
+}
+.route-line-demo .line {
+  width: 100px; height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(46,203,198,0.6), transparent);
+  position: relative;
+}
+.route-line-demo .line::after {
+  content: "→";
+  position: absolute; right: -6px; top: -10px;
+  color: #2ECBC6; font-size: 18px;
+}
+
+@media (max-width: 768px) {
+  .route-line-demo .line { width: 60px; }
+}
