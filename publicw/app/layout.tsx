@@ -4,7 +4,7 @@ import './globals.css'
 import PublicSessionProvider from '@/components/PublicSessionProvider'
 
 export const metadata: Metadata = {
-  title: 'PRIS COM Travel',
+  title: 'PRIS COM',
   description: 'Transport persoane • Rezervări online • Confort și siguranță',
   icons: {
     icon: '/sigla.png',

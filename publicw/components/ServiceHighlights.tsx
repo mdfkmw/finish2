@@ -8,7 +8,7 @@ export default function ServiceHighlights() {
     {
       title: 'Confirmare rapidă',
       description:
-        'Primești mesaj de confirmare pe e-mail sau telefon. Echipa PRIS COM Travel validează fiecare rezervare și îți oferă suport în cel mai scurt timp.',
+        'Primești mesaj de confirmare pe e-mail sau telefon. Echipa PRIS COM validează fiecare rezervare și îți oferă suport în cel mai scurt timp.',
     },
     {
       title: 'Optimizat pentru mobil',

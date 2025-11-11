@@ -1,6 +1,6 @@
+@import url('https://fonts.cdnfonts.com/css/davida-bold');
+
 @tailwind base;
-@tailwind components;
-@tailwind utilities;
 
 /* === Brand base already present === */
 :root { color-scheme: dark; }
@@ -17,6 +17,20 @@ body { @apply bg-slatebg text-white antialiased; }
   color: #fff;
 }
 .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand px-6 py-3 font-medium shadow-soft hover:bg-brand-600 active:bg-brand-700 transition; }
+
+
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .brand-wordmark {
+    font-family: 'Davida Bold', sans-serif;
+    font-weight: 400; /* fontul e deja bold */
+      color: #cbcbcb;
+  }
+}
+
+
 
 /* =============== EFFECT #1: HERO AURORA BLOBS (from HTML demo) =============== */
 .hero-aurora {

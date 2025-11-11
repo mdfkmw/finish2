@@ -95,12 +95,13 @@ export default function Navbar() {
           <Image
             src="/sigla.png"
             alt="Sigla Pris Com"
-            width={32}
-            height={32}
-            className="h-10 w-10"
+            width={80}
+            height={80}
+            className="h-10 w-30"
             priority
+            unoptimized
           />
-          <span className="text-xl" style={{ fontFamily: 'davidabt, sans-serif' }}>
+          <span className="text-xl brand-wordmark">
             Pris Com
           </span>
         </Link>
