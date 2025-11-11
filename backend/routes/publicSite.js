@@ -75,6 +75,65 @@ function buildPhoneVariants(raw) {
   return Array.from(variants).filter((value) => value && value.length);
 }
 
+function normalizeDatePart(value) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return value.toISOString().slice(0, 10);
+  }
+  const str = String(value).trim();
+  if (!str) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T/.test(str)) {
+    return str.slice(0, 10);
+  }
+  return null;
+}
+
+function parseTripDeparture(trip) {
+  if (!trip) return null;
+  const rawTs = trip.departure_at ?? trip.departure_ts ?? null;
+  if (rawTs instanceof Date && !Number.isNaN(rawTs.getTime())) {
+    return rawTs;
+  }
+
+  const rawTime = trip.time ?? trip.departure_time ?? null;
+  const timeStr = rawTime instanceof Date
+    ? rawTime.toISOString().slice(11, 16)
+    : typeof rawTime === 'string'
+      ? rawTime.trim().slice(0, 5)
+      : null;
+
+  const dateStr = normalizeDatePart(trip.date);
+  if (!timeStr || !dateStr) {
+    return null;
+  }
+
+  const composite = `${dateStr}T${timeStr}`;
+  const candidate = new Date(composite);
+  if (Number.isNaN(candidate.getTime())) {
+    return null;
+  }
+  return candidate;
+}
+
+function evaluateTripAvailability(trip) {
+  if (!trip) {
+    return { status: 'not_found' };
+  }
+  const boarding = Number(trip.boarding_started || trip.boardingStarted || 0) === 1;
+  if (boarding) {
+    return { status: 'boarding' };
+  }
+  const departure = parseTripDeparture(trip);
+  if (departure && departure.getTime() <= Date.now()) {
+    return { status: 'past', departure };
+  }
+  return { status: 'ok', departure };
+}
+
 function toHHMM(timeStr) {
   if (!timeStr) return null;
   const str = String(timeStr);
@@ -538,6 +597,8 @@ async function loadTripBasics(client, tripId) {
       t.date,
       DATE_FORMAT(t.time, '%H:%i') AS departure_time,
       t.time,
+      t.boarding_started,
+      TIMESTAMP(t.date, t.time) AS departure_at,
       rs.direction,
       rs.id AS schedule_id
     FROM trips t
@@ -580,9 +641,15 @@ async function computeSeatAvailability(client, {
   exitStationId,
   includeSeats = true,
   intentOwnerId = null,
+  preloadedTrip = null,
 }) {
-  const trip = await loadTripBasics(client, tripId);
+  const trip = preloadedTrip || (await loadTripBasics(client, tripId));
   if (!trip) return null;
+
+  const availability = evaluateTripAvailability(trip);
+  if (availability.status !== 'ok') {
+    return null;
+  }
 
   const stationSeq = await loadTripStationSequences(client, tripId);
   const boardSeq = stationSeq.get(Number(boardStationId));
@@ -1040,7 +1107,10 @@ router.get('/trips', async (req, res) => {
       SELECT
         t.id AS trip_id,
         t.route_id,
+        t.vehicle_id,
+        t.date AS trip_date,
         DATE_FORMAT(t.time, '%H:%i') AS departure_time,
+        t.boarding_started,
         rs.direction,
         rs.id AS schedule_id,
         r.name AS route_name
@@ -1058,6 +1128,8 @@ router.get('/trips', async (req, res) => {
           OR (COALESCE(rs.direction, 'tur') = 'retur' AND board_rs.sequence > exit_rs.sequence)
         )
         AND r.visible_online = 1
+        AND t.boarding_started = 0
+        AND TIMESTAMP(t.date, t.time) > NOW()
         AND NOT EXISTS (
           SELECT 1
             FROM schedule_exceptions se
@@ -1076,6 +1148,14 @@ router.get('/trips', async (req, res) => {
 
     const results = [];
     for (const trip of rows) {
+      const availability = evaluateTripAvailability({
+        ...trip,
+        date: trip.trip_date || date,
+      });
+      if (availability.status !== 'ok') {
+        continue;
+      }
+
       const seatInfo = await computeSeatAvailability(db, {
         tripId: trip.trip_id,
         boardStationId: fromStationId,
@@ -1148,6 +1228,19 @@ router.get('/trips/:tripId/seats', async (req, res) => {
   }
 
   try {
+    const trip = await loadTripBasics(null, tripId);
+    if (!trip) {
+      return res.status(404).json({ error: 'Cursa nu a fost găsită.' });
+    }
+
+    const availability = evaluateTripAvailability(trip);
+    if (availability.status === 'boarding') {
+      return res.status(409).json({ error: 'Îmbarcarea a început pentru această cursă; rezervările nu mai sunt disponibile.' });
+    }
+    if (availability.status === 'past') {
+      return res.status(409).json({ error: 'Cursa a plecat deja; rezervările nu mai sunt disponibile.' });
+    }
+
     const { ownerId: intentOwnerId } = ensureIntentOwner(req, res);
     const seatInfo = await computeSeatAvailability(db, {
       tripId,
@@ -1155,6 +1248,7 @@ router.get('/trips/:tripId/seats', async (req, res) => {
       exitStationId,
       includeSeats: true,
       intentOwnerId,
+      preloadedTrip: trip,
     });
 
     if (!seatInfo) {
@@ -1201,6 +1295,14 @@ router.get('/trips/:tripId/discount-types', async (req, res) => {
     const trip = await loadTripBasics(null, tripId);
     if (!trip) {
       return res.status(404).json({ error: 'Cursa nu a fost găsită.' });
+    }
+
+    const availability = evaluateTripAvailability(trip);
+    if (availability.status === 'boarding') {
+      return res.status(409).json({ error: 'Îmbarcarea a început pentru această cursă; rezervările nu mai sunt disponibile.' });
+    }
+    if (availability.status === 'past') {
+      return res.status(409).json({ error: 'Cursa a plecat deja; rezervările nu mai sunt disponibile.' });
     }
 
     const discounts = await fetchOnlineDiscountTypes(null, trip.schedule_id);
@@ -1533,6 +1635,17 @@ router.post('/reservations', async (req, res) => {
     return res.status(400).json({ error: 'Date incomplete pentru rezervare.' });
   }
 
+  const userPhone =
+    (req.publicUser?.phone && String(req.publicUser.phone).trim()) ||
+    (req.publicUser?.phoneNormalized && String(req.publicUser.phoneNormalized).trim()) ||
+    '';
+  if (req.publicUser && !userPhone) {
+    return res.status(428).json({
+      error: 'Pentru a continua, completează numărul de telefon din contul tău.',
+      needsProfileUpdate: true,
+    });
+  }
+
   const cleanName = contact?.name && String(contact.name).trim();
   const cleanPhone = sanitizePhone(contact?.phone);
   const rawEmail = contact?.email ? String(contact.email).trim() : '';
@@ -1576,6 +1689,18 @@ router.post('/reservations', async (req, res) => {
       await conn.rollback();
       conn.release();
       return res.status(404).json({ error: 'Cursa selectată nu există sau este indisponibilă.' });
+    }
+
+    const availability = evaluateTripAvailability(trip);
+    if (availability.status === 'boarding') {
+      await conn.rollback();
+      conn.release();
+      return res.status(409).json({ error: 'Îmbarcarea a început pentru această cursă; rezervările nu mai sunt disponibile.' });
+    }
+    if (availability.status === 'past') {
+      await conn.rollback();
+      conn.release();
+      return res.status(409).json({ error: 'Cursa a plecat deja; rezervările nu mai sunt disponibile.' });
     }
 
     const stationSeq = await loadTripStationSequences(conn, tripId);

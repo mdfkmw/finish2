@@ -43,6 +43,7 @@ const publicSiteRoutes = require('./routes/publicSite');
 const publicAuthRoutes = require('./routes/publicAuth');
 const tripRoutes = require('./routes/trips');
 const tripVehiclesRoutes = require('./routes/tripVehicles');
+const tripBoardingRouter = require('./routes/tripBoarding');
 const peopleRouter = require('./routes/people');
 const employeesRouter = require('./routes/employees');
 const operatorsRouter = require('./routes/operators');
@@ -140,6 +141,7 @@ app.use('/api/vehicles', require('./routes/vehicles'));
 //app.use('/api/trips/:tripId/vehicles', tripVehiclesRoutes);
 app.use('/api/trips', tripVehiclesRoutes);
 app.use('/api/trips', require('./routes/trips'));
+app.use('/api/trip-boarding', tripBoardingRouter);
 app.use('/api/public', publicSiteRoutes);
 // ✅ Blacklist: montăm la /api (rutele interne sunt /blacklist, /blacklist/check etc.)
 //    RBAC este definit per-metodă în routes/blacklist.js
