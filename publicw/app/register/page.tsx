@@ -39,13 +39,27 @@ function RegisterPageContent() {
       if (response.success) {
         if (response.session) {
           setSession(response.session)
+          setInfo(response.message || 'Cont creat cu succes! Te redirecționăm în câteva momente.')
+          setTimeout(() => {
+            router.push(redirectTo || '/')
+          }, 600)
+        } else if (response.pendingVerification) {
+          const fallbackMessage = response.emailSent === false
+            ? 'Contul a fost creat, însă nu am putut trimite emailul de confirmare automat. Te rugăm să contactezi echipa Pris-Com pentru activare.'
+            : 'Contul a fost creat. Verifică emailul pentru a confirma adresa și a activa accesul la cont.'
+          setInfo(response.message || fallbackMessage)
+          setName('')
+          setEmail('')
+          setPhone('')
+          setPassword('')
+          setConfirmPassword('')
         } else {
           await refreshSession()
+          setInfo(response.message || 'Cont creat cu succes!')
+          setTimeout(() => {
+            router.push(redirectTo || '/')
+          }, 600)
         }
-        setInfo(response.message || 'Cont creat cu succes! Te redirecționăm în câteva momente.')
-        setTimeout(() => {
-          router.push(redirectTo || '/')
-        }, 600)
       } else {
         setError(response.message || 'Nu am putut finaliza înregistrarea.')
       }
