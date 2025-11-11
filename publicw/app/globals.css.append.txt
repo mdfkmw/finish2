@@ -1,0 +1,12 @@
+
+/* === Seat visual effects (hover + selection) === */
+.seat{ position:relative; overflow:hidden; border-radius:12px; }
+.seat::after{
+  content:''; position:absolute; inset:-1px;
+  background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,.15) 14%, transparent 28%);
+  transform: translateX(-150%);
+  transition: opacity .2s ease;
+  pointer-events:none; opacity:0; border-radius: 12px;
+}
+.seat:hover::after{ animation: seatShine .9s ease; opacity:1; }
+@keyframes seatShine{ from{ transform: translateX(-150%);} to{ transform: translateX(150%);} }
