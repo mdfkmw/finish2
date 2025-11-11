@@ -1,12 +1,17 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { Suspense, useCallback, useEffect, useState, type FormEvent } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 import Navbar from '@/components/Navbar'
 import { usePublicSession } from '@/components/PublicSessionProvider'
-import { fetchAccountReservations, type AccountReservation, type AccountReservationsResponse } from '@/lib/api'
+import {
+  fetchAccountReservations,
+  updatePublicProfile,
+  type AccountReservation,
+  type AccountReservationsResponse,
+} from '@/lib/api'
 import { formatRoDate } from '@/lib/format'
 
 type StatusMeta = { label: string; className: string }
@@ -157,12 +162,20 @@ function ReservationCard({
   )
 }
 
-export default function AccountPage() {
+function AccountPageContent() {
   const router = useRouter()
-  const { session, loading } = usePublicSession()
+  const searchParams = useSearchParams()
+  const { session, loading, setSession } = usePublicSession()
   const [reservations, setReservations] = useState<AccountReservationsResponse | null>(null)
   const [reservationsLoading, setReservationsLoading] = useState(false)
   const [reservationsError, setReservationsError] = useState<string | null>(null)
+  const [profileName, setProfileName] = useState('')
+  const [profilePhone, setProfilePhone] = useState('')
+  const [profileSubmitting, setProfileSubmitting] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileSuccess, setProfileSuccess] = useState<string | null>(null)
+
+  const needsContactUpdate = searchParams?.get('missing') === 'contact'
 
   const loadReservations = useCallback(async () => {
     if (!session) return
@@ -185,10 +198,45 @@ export default function AccountPage() {
   }, [loading, session, router])
 
   useEffect(() => {
+    if (session) {
+      setProfileName(session.user.name?.trim() || '')
+      setProfilePhone(session.user.phone?.trim() || '')
+      setProfileError(null)
+      setProfileSuccess(null)
+    }
+  }, [session])
+
+  useEffect(() => {
     if (!loading && session) {
       loadReservations()
     }
   }, [loading, session, loadReservations])
+
+  const handleProfileSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setProfileError(null)
+    setProfileSuccess(null)
+    const trimmedName = profileName.trim()
+    const trimmedPhone = profilePhone.trim()
+    if (!trimmedPhone) {
+      setProfileError('Completează numărul de telefon pentru a putea continua rezervările online.')
+      return
+    }
+    try {
+      setProfileSubmitting(true)
+      const response = await updatePublicProfile({
+        name: trimmedName ? trimmedName : null,
+        phone: trimmedPhone,
+      })
+      setProfileSuccess(response.message || 'Datele au fost actualizate.')
+      setSession(response.session)
+    } catch (err: any) {
+      const message = err?.message || 'Nu am putut actualiza profilul.'
+      setProfileError(message)
+    } finally {
+      setProfileSubmitting(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -213,6 +261,8 @@ export default function AccountPage() {
   }
 
   const displayName = session.user.name?.trim() || session.user.email || 'utilizator'
+  const phoneMissing = !session.user.phone || !session.user.phone.trim()
+  const accountEmail = session.user.email || ''
   const upcomingReservations = reservations?.upcoming ?? []
   const pastReservations = reservations?.past ?? []
   const initialLoading = reservationsLoading && !reservations
@@ -248,6 +298,89 @@ export default function AccountPage() {
             Rezervările realizate online sunt afișate mai jos. Rezervările efectuate telefonic sau la autogară nu sunt sincronizate automat cu contul online.
           </p>
         </header>
+
+        <section className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur px-5 py-6 space-y-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-white">Datele contului</h2>
+              <p className="text-sm text-white/60">Actualizează numele și numărul de telefon folosite pentru rezervările online.</p>
+            </div>
+            {phoneMissing && (
+              <span className="inline-flex items-center rounded-full border border-amber-300/40 bg-amber-400/20 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-100">
+                Telefon lipsă
+              </span>
+            )}
+          </div>
+
+          {needsContactUpdate && (
+            <div className="rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+              Completează numărul de telefon pentru a finaliza rezervarea începută. După salvare, reia procesul de rezervare.
+            </div>
+          )}
+
+          {profileError && (
+            <p className="rounded-2xl border border-rose-400/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{profileError}</p>
+          )}
+          {profileSuccess && (
+            <p className="rounded-2xl border border-emerald-300/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{profileSuccess}</p>
+          )}
+
+          <form onSubmit={handleProfileSubmit} className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label htmlFor="account-email" className="block text-xs font-medium uppercase tracking-wide text-white/50">
+                Email
+              </label>
+              <input
+                id="account-email"
+                type="email"
+                value={accountEmail}
+                readOnly
+                disabled
+                className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2 text-sm text-white/70"
+              />
+            </div>
+            <div>
+              <label htmlFor="account-name" className="block text-xs font-medium text-white/70">
+                Nume complet
+              </label>
+              <input
+                id="account-name"
+                type="text"
+                value={profileName}
+                onChange={(event) => setProfileName(event.target.value)}
+                autoComplete="name"
+                className="mt-1 w-full rounded-xl border border-white/10 bg-black/40 px-4 py-2 text-sm text-white placeholder-white/40 focus:border-brand focus:outline-none"
+                placeholder="Ex. Maria Popescu"
+              />
+            </div>
+            <div>
+              <label htmlFor="account-phone" className="block text-xs font-medium text-white/70">
+                Telefon
+              </label>
+              <input
+                id="account-phone"
+                type="tel"
+                inputMode="tel"
+                value={profilePhone}
+                onChange={(event) => setProfilePhone(event.target.value)}
+                autoComplete="tel"
+                className="mt-1 w-full rounded-xl border border-white/10 bg-black/40 px-4 py-2 text-sm text-white placeholder-white/40 focus:border-brand focus:outline-none"
+                placeholder="07xx xxx xxx"
+                required
+              />
+            </div>
+            <div className="sm:col-span-2 flex flex-wrap items-center gap-3">
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-black transition hover:bg-brand/80 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={profileSubmitting}
+              >
+                {profileSubmitting ? 'Se salvează...' : 'Salvează modificările'}
+              </button>
+              <p className="text-xs text-white/50">Numărul de telefon este folosit pentru confirmarea rezervărilor online.</p>
+            </div>
+          </form>
+        </section>
 
         {reservationsError && (
           <div className="rounded-3xl border border-rose-400/40 bg-rose-500/10 px-5 py-4 text-sm text-rose-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -291,5 +424,22 @@ export default function AccountPage() {
         </div>
       </section>
     </main>
+  )
+}
+
+export default function AccountPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-slatebg text-white">
+          <Navbar />
+          <div className="max-w-4xl mx-auto px-4 py-20 text-center text-white/70">
+            Se încarcă datele contului...
+          </div>
+        </main>
+      }
+    >
+      <AccountPageContent />
+    </Suspense>
   )
 }
