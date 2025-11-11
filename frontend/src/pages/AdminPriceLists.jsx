@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
+
 const formatValue = (value) => {
   if (value == null || value === '') return '';
   const num = Number(value);
@@ -43,6 +44,7 @@ export default function AdminPriceLists() {
   const [importStationsRaw, setImportStationsRaw] = useState([]);
   const [importStations, setImportStations] = useState([]);
   const [importLoading, setImportLoading] = useState(false);
+  const [isPanelOpen, setIsPanelOpen] = useState(true);
 
   const nameToId = useMemo(() => {
     const map = new Map();
@@ -546,9 +548,21 @@ const handleCopyReturnToOutbound = () => {
 
   return (
     <div className="space-y-4 max-w-full">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 w-fit text-sm">
+      <div className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded">
+        <h2 className="text-sm font-semibold text-gray-700">Setări listă de prețuri</h2>
+        <button
+          type="button"
+          onClick={() => setIsPanelOpen((prev) => !prev)}
+          className="text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700"
+        >
+          {isPanelOpen ? 'Ascunde ▲' : 'Arată ▼'}
+        </button>
+      </div>
+
+      {isPanelOpen && (
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-start md:gap-x-10">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 w-fit text-sm lg:flex-none">
             <div className="flex flex-col">
               <label className="text-xs text-gray-700 font-semibold">Traseu:</label>
               <select
@@ -605,7 +619,7 @@ const handleCopyReturnToOutbound = () => {
             </div>
           </div>
 
-          <div className="border rounded bg-gray-50 p-3 space-y-3 w-full xl:w-[420px] xl:self-start">
+          <div className="grid grid-cols-1 gap-x-6 gap-y-2 w-fit text-sm lg:flex-none">
             <h3 className="text-sm font-semibold text-gray-700">Importă prețuri din altă listă</h3>
             <p className="text-xs text-gray-600">
               Importul reușește doar dacă stațiile și ordinea lor sunt identice cu lista curentă.
@@ -709,18 +723,18 @@ const handleCopyReturnToOutbound = () => {
             Salvează
           </button>
         </div>
-      </div>
-
+        </div>
+      )}
       {stations.length > 0 && (
-        <div className="relative inline-block border rounded shadow bg-white p-2 max-h-[70vh] max-w-full overflow-auto">
+        <div className="relative inline-block border rounded shadow bg-white p-2 max-w-full max-h-[600px] overflow-auto">
           <table className="min-w-max table-fixed border-collapse text-[13px]">
-            <thead className="sticky top-0 z-30 bg-gray-100">
+            <thead>
               <tr>
                 <th
                   className={[
-                    'border px-1 py-1 text-center w-[120px] min-w-[120px] h-[50px] sticky top-0 left-0 z-30 bg-gray-100',
+                    'border px-1 py-1 text-center w-[120px] min-w-[120px] h-[50px] sticky top-0 left-0 z-40 bg-gray-100',
                   ].join(' ')}
-                >
+               >
                   Stație
                 </th>
                 {stations.map((station) => {
@@ -729,7 +743,7 @@ const handleCopyReturnToOutbound = () => {
                     <th
                       key={station}
                       className={[
-                        'border px-1 py-1 text-center w-[90px] min-w-[90px] h-[32px] truncate sticky top-0 z-20 bg-gray-100',
+                        'border px-1 py-1 text-center w-[90px] min-w-[90px] h-[32px] truncate sticky top-0 z-30 bg-gray-100',
                         headerHighlight,
                       ]
                         .filter(Boolean)
