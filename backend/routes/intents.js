@@ -43,6 +43,26 @@ router.post('/', async (req, res) => {
   const ownerId = getOwnerId(req, res);
 
   try {
+    const tripStatus = await db.query(
+      `SELECT boarding_started, TIMESTAMP(date, time) AS departure_at FROM trips WHERE id = ? LIMIT 1`,
+      [tripId]
+    );
+    const tripRow = tripStatus.rows?.[0] || tripStatus[0]?.[0] || null;
+    if (!tripRow) {
+      return res.status(404).json({ error: 'Cursa nu a fost găsită.' });
+    }
+    if (Number(tripRow.boarding_started)) {
+      return res.status(409).json({ error: 'Îmbarcarea a început pentru această cursă; rezervările nu mai sunt disponibile.' });
+    }
+    const departureAt = tripRow.departure_at instanceof Date
+      ? tripRow.departure_at
+      : tripRow.departure_at
+        ? new Date(tripRow.departure_at)
+        : null;
+    if (departureAt && !Number.isNaN(departureAt.getTime()) && departureAt.getTime() <= Date.now()) {
+      return res.status(409).json({ error: 'Cursa a plecat deja; rezervările nu mai sunt disponibile.' });
+    }
+
     const existing = await db.query(
       `SELECT id, user_id FROM reservation_intents WHERE trip_id = ? AND seat_id = ? LIMIT 1`,
       [tripId, seatId]
