@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 
 import { usePublicSession } from '@/components/PublicSessionProvider'
@@ -92,17 +91,8 @@ export default function Navbar() {
     <header className="w-full sticky top-0 z-30 backdrop-blur supports-[backdrop-filter]:bg-black/40">
       <div className="max-w-6xl mx-auto flex items-center justify-between py-4 px-4">
         <Link href="/" className="flex items-center gap-2 font-semibold text-white">
-          <Image
-            src="/sigla.png"
-            alt="Sigla Pris Com"
-            width={32}
-            height={32}
-            className="h-10 w-10"
-            priority
-          />
-          <span className="text-xl" style={{ fontFamily: 'davidabt, sans-serif' }}>
-            Pris Com
-          </span>
+          <span className="text-primary">✈</span>
+          <span className="text-xl">VoyageBus</span>
         </Link>
         <nav className="hidden md:flex items-center gap-1">
           {baseLinks.map((link) => (

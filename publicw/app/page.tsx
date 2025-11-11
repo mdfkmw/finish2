@@ -505,7 +505,7 @@ export default function Page() {
 
       <footer className="mt-20 border-t border-white/10">
         <div className="max-w-6xl mx-auto px-4 py-10 text-white/60 text-sm">
-          2025 Auto Dimas & Pris Com Univers — Toate drepturile rezervate.
+          © {new Date().getFullYear()} PRIS COM Travel — Toate drepturile rezervate.
         </div>
       </footer>
 

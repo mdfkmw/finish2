@@ -65,7 +65,7 @@ function RegisterPageContent() {
             <Link href="/" className="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white">
               ← Înapoi la pagina principală
             </Link>
-            <h1 className="mt-4 text-3xl font-semibold md:text-4xl">Creează-ți contul Pris Com</h1>
+            <h1 className="mt-4 text-3xl font-semibold md:text-4xl">Creează-ți contul VoyageBus</h1>
             <p className="mt-2 text-sm text-white/70">
               Înregistrează-te pentru a face și gestiona rezervări mai rapid, direct din aplicația web publică.
             </p>
