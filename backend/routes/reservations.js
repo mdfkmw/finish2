@@ -660,8 +660,7 @@ router.post('/', async (req, res) => {
     // 2) trip existent sau îl creăm
     let trip_id;
     const tripRes = await db.query(
-      `SELECT id, date, TIME_FORMAT(time, '%H:%i') AS departure_time, time, boarding_started
-         FROM trips
+      `SELECT id FROM trips
         WHERE route_schedule_id = ?
           AND vehicle_id = ?
           AND date = DATE(?)
@@ -672,40 +671,12 @@ router.post('/', async (req, res) => {
     if (tripRes.rows.length > 0) {
       trip_id = tripRes.rows[0].id;
     } else {
-      const dateStr = typeof date === 'string' ? date.slice(0, 10) : null;
-      const timeStr = typeof canonicalTime === 'string' ? canonicalTime.slice(0, 5) : null;
-      if (dateStr && timeStr) {
-        const departureCandidate = new Date(`${dateStr}T${timeStr}`);
-        if (!Number.isNaN(departureCandidate.getTime()) && departureCandidate.getTime() <= Date.now()) {
-          return abortWithError(409, { error: 'Cursa a plecat deja; rezervările nu mai sunt disponibile.' });
-        }
-      }
       const ins = await db.query(
         `INSERT INTO trips (route_schedule_id, route_id, vehicle_id, date, time)
          VALUES (?, ?, ?, ?, TIME(?))`,
         [resolvedScheduleId, route_id, vehicle_id, date, canonicalTime]
       );
       trip_id = ins.insertId;
-    }
-
-    const tripStatusRes = await db.query(
-      `SELECT boarding_started, TIMESTAMP(date, time) AS departure_at FROM trips WHERE id = ? LIMIT 1`,
-      [trip_id]
-    );
-    const tripStatusRow = tripStatusRes.rows?.[0] || null;
-    if (!tripStatusRow) {
-      return abortWithError(404, { error: 'Cursa selectată nu a fost găsită.' });
-    }
-    if (Number(tripStatusRow.boarding_started)) {
-      return abortWithError(409, { error: 'Îmbarcarea a început pentru această cursă; rezervările nu mai sunt disponibile.' });
-    }
-    const departureAt = tripStatusRow.departure_at instanceof Date
-      ? tripStatusRow.departure_at
-      : tripStatusRow.departure_at
-        ? new Date(tripStatusRow.departure_at)
-        : null;
-    if (departureAt && !Number.isNaN(departureAt.getTime()) && departureAt.getTime() <= Date.now()) {
-      return abortWithError(409, { error: 'Cursa a plecat deja; rezervările nu mai sunt disponibile.' });
     }
 
     // 3) pasageri (creăm/actualizăm rezervări, calcule, plăți)

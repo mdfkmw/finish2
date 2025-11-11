@@ -50,7 +50,6 @@ router.get('/', async (req, res) => {
         tv.is_primary,
         t.time             AS trip_time,
         t.disabled         AS disabled,
-        t.boarding_started AS boarding_started,
         t.route_id,
         r.name             AS route_name,
         rs.id              AS route_schedule_id,

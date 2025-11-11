@@ -10,7 +10,7 @@ import { usePublicSession } from '@/components/PublicSessionProvider'
 const baseLinks = [
   { href: '/', label: 'Acasă' },
   { href: '/#trasee', label: 'Trasee' },
-  { href: '/contact', label: 'Contact' },
+  { href: '/#contact', label: 'Contact' },
 ]
 
 const NAV_ITEM_CLASS =

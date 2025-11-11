@@ -81,7 +81,6 @@ router.get('/', async (req, res) => {
         t.id            AS trip_id,
         t.date,
         t.time,
-        t.boarding_started,
         t.route_id,
         t.vehicle_id,
         rs.operator_id  AS trip_operator_id,
@@ -111,12 +110,11 @@ router.get('/', async (req, res) => {
 router.get('/summary', async (_req, res) => {
   try {
     const query = `
-      SELECT
-        t.id AS trip_id,
-        t.date,
-        t.time,
-        t.boarding_started,
-        r.name AS route_name,
+      SELECT 
+        t.id AS trip_id, 
+        t.date, 
+        t.time, 
+        r.name AS route_name, 
         v.plate_number
       FROM trips t
       JOIN routes r ON t.route_id = r.id
@@ -219,7 +217,7 @@ console.log('[trips/find] inserted trip id=', insertId);
 
     // citim trip-ul inserat după ID (safe în concurență)
     const { rows: tripRows} = await db.query(
-      `SELECT id, route_id, vehicle_id, date, TIME_FORMAT(time, '%H:%i') AS time, disabled, boarding_started
+      `SELECT id, route_id, vehicle_id, date, TIME_FORMAT(time, '%H:%i') AS time, disabled
          FROM trips
         WHERE id = ?`,
       [insertId]
