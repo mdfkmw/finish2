@@ -6,6 +6,9 @@ import PublicSessionProvider from '@/components/PublicSessionProvider'
 export const metadata: Metadata = {
   title: 'PRIS COM Travel',
   description: 'Transport persoane • Rezervări online • Confort și siguranță',
+  icons: {
+    icon: '/sigla.png',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
