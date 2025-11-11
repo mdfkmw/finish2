@@ -546,9 +546,9 @@ const handleCopyReturnToOutbound = () => {
 
   return (
     <div className="space-y-4 max-w-full">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 w-fit text-sm">
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 w-fit text-sm lg:flex-none">
             <div className="flex flex-col">
               <label className="text-xs text-gray-700 font-semibold">Traseu:</label>
               <select
@@ -605,116 +605,116 @@ const handleCopyReturnToOutbound = () => {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={handleCopyOutboundToReturn}
-              className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded"
-            >
-              Copie Tur/Retur
-            </button>
-            <button
-              type="button"
-              onClick={handleCopyReturnToOutbound}
-              className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded"
-            >
-              Copie Retur/Tur
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded"
-            >
-              Salvează
-            </button>
+          <div className="border rounded bg-gray-50 p-3 space-y-3 w-full lg:w-[420px] lg:self-start lg:ml-auto">
+            <h3 className="text-sm font-semibold text-gray-700">Importă prețuri din altă listă</h3>
+            <p className="text-xs text-gray-600">
+              Importul reușește doar dacă stațiile și ordinea lor sunt identice cu lista curentă.
+            </p>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              <div className="flex flex-col">
+                <label className="text-xs text-gray-700 font-semibold">Traseu sursă:</label>
+                <select
+                  value={importRoute}
+                  onChange={(e) => setImportRoute(e.target.value)}
+                  className="border border-gray-300 rounded px-2 py-1 w-[200px]"
+                >
+                  <option value="">Selectează traseu</option>
+                  {routes.map((route) => (
+                    <option key={route.id} value={route.id}>
+                      {route.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col">
+                <label className="text-xs text-gray-700 font-semibold">Categorie sursă:</label>
+                <select
+                  value={importCategory}
+                  onChange={(e) => setImportCategory(e.target.value)}
+                  className="border border-gray-300 rounded px-2 py-1 w-[200px]"
+                >
+                  <option value="">Selectează categorie</option>
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col">
+                <label className="text-xs text-gray-700 font-semibold">Dată aplicare:</label>
+                <input
+                  type="date"
+                  value={importEffectiveDate}
+                  onChange={(e) => setImportEffectiveDate(e.target.value)}
+                  className="border border-gray-300 rounded px-2 py-1 w-[200px]"
+                />
+              </div>
+              <div className="flex flex-col">
+                <label className="text-xs text-gray-700 font-semibold">Versiune:</label>
+                <select
+                  value={importSelectedVersion}
+                  onChange={(e) => setImportSelectedVersion(e.target.value)}
+                  className="border border-gray-300 rounded px-2 py-1 w-[200px]"
+                >
+                  <option value="">Selectează versiune</option>
+                  {importVersions.map((version) => (
+                    <option key={version.id} value={version.id}>
+                      {new Date(version.effective_from).toLocaleDateString()} (ver. {version.version})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={handleImportPrices}
+                disabled={importLoading}
+                className={`px-3 py-1 rounded text-white ${
+                  importLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
+              >
+                {importLoading ? 'Se importă…' : 'Importă prețuri'}
+              </button>
+              {importStationsMatch ? (
+                <span className="text-xs text-emerald-700 font-medium">Stațiile se potrivesc.</span>
+              ) : importRoute && importCategory && importSelectedVersion && importStations.length > 0 ? (
+                <span className="text-xs text-amber-600">Stațiile nu se potrivesc ca număr sau ordine.</span>
+              ) : null}
+            </div>
           </div>
         </div>
 
-        <div className="border rounded bg-gray-50 p-3 space-y-3 w-full xl:w-[420px] xl:self-start">
-          <h3 className="text-sm font-semibold text-gray-700">Importă prețuri din altă listă</h3>
-          <p className="text-xs text-gray-600">
-            Importul reușește doar dacă stațiile și ordinea lor sunt identice cu lista curentă.
-          </p>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-            <div className="flex flex-col">
-              <label className="text-xs text-gray-700 font-semibold">Traseu sursă:</label>
-              <select
-                value={importRoute}
-                onChange={(e) => setImportRoute(e.target.value)}
-                className="border border-gray-300 rounded px-2 py-1 w-[200px]"
-              >
-                <option value="">Selectează traseu</option>
-                {routes.map((route) => (
-                  <option key={route.id} value={route.id}>
-                    {route.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex flex-col">
-              <label className="text-xs text-gray-700 font-semibold">Categorie sursă:</label>
-              <select
-                value={importCategory}
-                onChange={(e) => setImportCategory(e.target.value)}
-                className="border border-gray-300 rounded px-2 py-1 w-[200px]"
-              >
-                <option value="">Selectează categorie</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex flex-col">
-              <label className="text-xs text-gray-700 font-semibold">Dată aplicare:</label>
-              <input
-                type="date"
-                value={importEffectiveDate}
-                onChange={(e) => setImportEffectiveDate(e.target.value)}
-                className="border border-gray-300 rounded px-2 py-1 w-[200px]"
-              />
-            </div>
-            <div className="flex flex-col">
-              <label className="text-xs text-gray-700 font-semibold">Versiune:</label>
-              <select
-                value={importSelectedVersion}
-                onChange={(e) => setImportSelectedVersion(e.target.value)}
-                className="border border-gray-300 rounded px-2 py-1 w-[200px]"
-              >
-                <option value="">Selectează versiune</option>
-                {importVersions.map((version) => (
-                  <option key={version.id} value={version.id}>
-                    {new Date(version.effective_from).toLocaleDateString()} (ver. {version.version})
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <button
-              type="button"
-              onClick={handleImportPrices}
-              disabled={importLoading}
-              className={`px-3 py-1 rounded text-white ${
-                importLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700'
-              }`}
-            >
-              {importLoading ? 'Se importă…' : 'Importă prețuri'}
-            </button>
-            {importStationsMatch ? (
-              <span className="text-xs text-emerald-700 font-medium">Stațiile se potrivesc.</span>
-            ) : importRoute && importCategory && importSelectedVersion && importStations.length > 0 ? (
-              <span className="text-xs text-amber-600">Stațiile nu se potrivesc ca număr sau ordine.</span>
-            ) : null}
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleCopyOutboundToReturn}
+            className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded"
+          >
+            Copie Tur/Retur
+          </button>
+          <button
+            type="button"
+            onClick={handleCopyReturnToOutbound}
+            className="px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded"
+          >
+            Copie Retur/Tur
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded"
+          >
+            Salvează
+          </button>
         </div>
       </div>
 
       {stations.length > 0 && (
-        <div className="inline-block border rounded shadow bg-white p-2 max-h-[70vh] max-w-full overflow-auto">
+        <div className="relative inline-block border rounded shadow bg-white p-2 max-w-full overflow-x-auto">
           <table className="min-w-max table-fixed border-collapse text-[13px]">
-            <thead>
+            <thead className="sticky top-0 z-30 bg-gray-100">
               <tr>
                 <th
                   className={[
