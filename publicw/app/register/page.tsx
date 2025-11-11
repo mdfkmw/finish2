@@ -28,10 +28,6 @@ function RegisterPageContent() {
     setError(null)
     setInfo(null)
 
-    if (!phone.trim()) {
-      setError('Introdu un număr de telefon pentru a continua.')
-      return
-    }
     if (password !== confirmPassword) {
       setError('Parolele nu coincid.')
       return
@@ -39,13 +35,7 @@ function RegisterPageContent() {
 
     try {
       setLoading(true)
-      const trimmedName = name.trim()
-      const response = await registerWithEmail({
-        name: trimmedName ? trimmedName : undefined,
-        email,
-        password,
-        phone: phone.trim(),
-      })
+      const response = await registerWithEmail({ name: name || undefined, email, password, phone: phone || undefined })
       if (response.success) {
         if (response.session) {
           setSession(response.session)
@@ -129,7 +119,7 @@ function RegisterPageContent() {
               </div>
               <div className="space-y-1">
                 <label htmlFor="register-phone" className="block text-xs font-medium text-white/70">
-                  Telefon
+                  Telefon (opțional)
                 </label>
                 <input
                   id="register-phone"
@@ -140,7 +130,6 @@ function RegisterPageContent() {
                   onChange={(event) => setPhone(event.target.value)}
                   className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-2 text-sm text-white placeholder-white/40 focus:border-brand focus:outline-none"
                   placeholder="07xx xxx xxx"
-                  required
                 />
               </div>
               <div className="space-y-1">
