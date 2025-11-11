@@ -350,18 +350,7 @@ export interface EmailRegisterPayload {
   name?: string | null;
   email: string;
   password: string;
-  phone: string;
-}
-
-export interface UpdateProfilePayload {
-  name?: string | null;
-  phone: string;
-}
-
-export interface UpdateProfileResponse {
-  success: boolean;
-  message?: string | null;
-  session: AuthSessionInfo;
+  phone?: string | null;
 }
 
 export interface EmailLoginPayload {
@@ -381,13 +370,6 @@ export interface ResendEmailVerificationPayload {
 export async function registerWithEmail(payload: EmailRegisterPayload): Promise<AuthResponse> {
   return request<AuthResponse>('/api/public/auth/register', {
     method: 'POST',
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function updatePublicProfile(payload: UpdateProfilePayload): Promise<UpdateProfileResponse> {
-  return request<UpdateProfileResponse>('/api/public/auth/profile', {
-    method: 'PUT',
     body: JSON.stringify(payload),
   });
 }
