@@ -197,7 +197,11 @@ function LoginPageContent() {
               <a href="mailto:rezervari@pris-com.ro" className="font-semibold text-white hover:underline">
                 rezervari@pris-com.ro
               </a>{' '}
-              sau la numărul de telefon afișat în pagina de contact.
+              sau la numerele de telefon din{' '}
+              <Link href="/contact" className="font-semibold text-white hover:underline">
+                pagina de contact
+              </Link>
+              .
             </p>
           </div>
         </aside>

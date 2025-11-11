@@ -1533,6 +1533,17 @@ router.post('/reservations', async (req, res) => {
     return res.status(400).json({ error: 'Date incomplete pentru rezervare.' });
   }
 
+  const userPhone =
+    (req.publicUser?.phone && String(req.publicUser.phone).trim()) ||
+    (req.publicUser?.phoneNormalized && String(req.publicUser.phoneNormalized).trim()) ||
+    '';
+  if (req.publicUser && !userPhone) {
+    return res.status(428).json({
+      error: 'Pentru a continua, completează numărul de telefon din contul tău.',
+      needsProfileUpdate: true,
+    });
+  }
+
   const cleanName = contact?.name && String(contact.name).trim();
   const cleanPhone = sanitizePhone(contact?.phone);
   const rawEmail = contact?.email ? String(contact.email).trim() : '';
