@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 
 import SocialLoginButtons from '@/components/auth/SocialLoginButtons'
 import { usePublicSession } from '@/components/PublicSessionProvider'
-import { loginWithEmail } from '@/lib/api'
+import { loginWithEmail, resendEmailVerification } from '@/lib/api'
 
 function LoginPageContent() {
   const router = useRouter()
@@ -18,13 +18,16 @@ function LoginPageContent() {
   const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(true)
   const [loading, setLoading] = useState(false)
+  const [resendLoading, setResendLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null)
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError(null)
     setInfo(null)
+    setPendingVerificationEmail(null)
 
     if (!email || !password) {
       setError('Introduce adresa de email și parola pentru a continua.')
@@ -44,14 +47,42 @@ function LoginPageContent() {
         setTimeout(() => {
           router.push(redirectTo || '/')
         }, 600)
+        setPendingVerificationEmail(null)
       } else {
-        setError(response.message || 'Nu am putut finaliza autentificarea.')
+        if (response.needsVerification) {
+          const fallbackMessage = response.emailSent === false
+            ? 'Trebuie să confirmi adresa de email, însă nu am putut retrimite automat mesajul. Contactează echipa Pris-Com pentru activare.'
+            : 'Verifică emailul pentru a confirma adresa și încearcă din nou după activarea contului.'
+          setInfo(response.message || fallbackMessage)
+          setPendingVerificationEmail(email)
+          setError(null)
+        } else {
+          setError(response.message || 'Nu am putut finaliza autentificarea.')
+          setPendingVerificationEmail(null)
+        }
       }
     } catch (err: any) {
       const fallback = err?.message || 'Nu am putut finaliza autentificarea.'
       setError(fallback)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleResendEmail = async () => {
+    if (!pendingVerificationEmail) {
+      return
+    }
+
+    try {
+      setResendLoading(true)
+      setError(null)
+      const response = await resendEmailVerification({ email: pendingVerificationEmail })
+      setInfo(response.message || 'Dacă există un cont pentru această adresă, vei primi în scurt timp un email.')
+    } catch (err: any) {
+      setError(err?.message || 'Nu am putut retrimite emailul de confirmare.')
+    } finally {
+      setResendLoading(false)
     }
   }
 
@@ -114,6 +145,16 @@ function LoginPageContent() {
 
               {error ? <p className="rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p> : null}
               {info ? <p className="rounded-xl bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">{info}</p> : null}
+              {pendingVerificationEmail ? (
+                <button
+                  type="button"
+                  onClick={handleResendEmail}
+                  className="w-full rounded-xl border border-white/20 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={resendLoading}
+                >
+                  {resendLoading ? 'Se retrimite emailul...' : 'Retrimite emailul de confirmare'}
+                </button>
+              ) : null}
 
               <button
                 type="submit"

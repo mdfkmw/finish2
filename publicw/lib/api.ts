@@ -309,9 +309,23 @@ export interface AuthSessionInfo {
   refreshToken?: string;
 }
 
-export type AuthResponse =
-  | { success: true; message?: string | null; session?: AuthSessionInfo }
-  | { success: false; message: string };
+export interface AuthSuccessResponse {
+  success: true;
+  message?: string | null;
+  session?: AuthSessionInfo;
+  pendingVerification?: boolean;
+  emailSent?: boolean;
+}
+
+export interface AuthErrorResponse {
+  success: false;
+  message: string;
+  needsVerification?: boolean;
+  emailSent?: boolean;
+  expired?: boolean;
+}
+
+export type AuthResponse = AuthSuccessResponse | AuthErrorResponse;
 
 export interface StartPhoneLinkPayload {
   phone: string;
@@ -345,6 +359,14 @@ export interface EmailLoginPayload {
   remember?: boolean;
 }
 
+export interface VerifyEmailPayload {
+  token: string;
+}
+
+export interface ResendEmailVerificationPayload {
+  email: string;
+}
+
 export async function registerWithEmail(payload: EmailRegisterPayload): Promise<AuthResponse> {
   return request<AuthResponse>('/api/public/auth/register', {
     method: 'POST',
@@ -354,6 +376,22 @@ export async function registerWithEmail(payload: EmailRegisterPayload): Promise<
 
 export async function loginWithEmail(payload: EmailLoginPayload): Promise<AuthResponse> {
   return request<AuthResponse>('/api/public/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function verifyEmailToken(payload: VerifyEmailPayload): Promise<AuthResponse> {
+  return request<AuthResponse>('/api/public/auth/email/verify', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function resendEmailVerification(
+  payload: ResendEmailVerificationPayload,
+): Promise<{ success: boolean; message: string; emailSent?: boolean }> {
+  return request<{ success: boolean; message: string; emailSent?: boolean }>('/api/public/auth/email/resend', {
     method: 'POST',
     body: JSON.stringify(payload),
   });
