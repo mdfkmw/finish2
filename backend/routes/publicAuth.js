@@ -17,6 +17,20 @@ const {
 
 const router = express.Router();
 
+const EMAIL_VERIFICATION_TTL_HOURS = 48;
+
+function getPublicAppBaseUrl() {
+  return (
+    process.env.PUBLIC_APP_BASE_URL ||
+    process.env.PUBLIC_APP_URL ||
+    process.env.PUBLIC_SITE_BASE_URL ||
+    process.env.PUBLIC_SITE_URL ||
+    process.env.PUBLIC_FRONTEND_URL ||
+    process.env.PUBLIC_WEB_URL ||
+    'https://pris-com.ro'
+  );
+}
+
 function escapeHtml(value) {
   if (value == null) return '';
   return String(value)
@@ -68,6 +82,8 @@ function sha256(value) {
   return crypto.createHash('sha256').update(String(value)).digest('hex');
 }
 
+let emailVerificationTableReady = false;
+
 function mapUser(row) {
   const id = typeof row.id === 'bigint' ? Number(row.id) : Number(row.id);
   return {
@@ -85,6 +101,121 @@ function buildSession(row, overrides = {}) {
     user: mapUser(row),
     ...overrides,
   };
+}
+
+async function ensureEmailVerificationTable() {
+  if (emailVerificationTableReady) {
+    return;
+  }
+
+  await db.query(
+    `CREATE TABLE IF NOT EXISTS public_user_email_verifications (
+      id bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT,
+      user_id bigint(20) UNSIGNED NOT NULL,
+      token_hash char(64) NOT NULL,
+      expires_at datetime NOT NULL,
+      consumed_at datetime DEFAULT NULL,
+      created_at datetime NOT NULL DEFAULT current_timestamp(),
+      updated_at datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+      PRIMARY KEY (id),
+      UNIQUE KEY idx_public_user_email_verifications_token (token_hash),
+      KEY idx_public_user_email_verifications_user (user_id),
+      CONSTRAINT fk_public_user_email_verifications_user FOREIGN KEY (user_id)
+        REFERENCES public_users (id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  emailVerificationTableReady = true;
+}
+
+async function createEmailVerificationToken(userId) {
+  const numericUserId = typeof userId === 'bigint' ? Number(userId) : Number(userId);
+  if (!Number.isFinite(numericUserId)) {
+    throw new Error('invalid user id for email verification');
+  }
+
+  await ensureEmailVerificationTable();
+
+  await db.query(
+    `UPDATE public_user_email_verifications
+        SET consumed_at = NOW(), updated_at = NOW()
+      WHERE user_id = ? AND consumed_at IS NULL`,
+    [numericUserId]
+  );
+
+  const token = crypto.randomBytes(32).toString('hex');
+  const tokenHash = sha256(token);
+
+  await db.query(
+    `INSERT INTO public_user_email_verifications (user_id, token_hash, expires_at)
+     VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? HOUR))`,
+    [numericUserId, tokenHash, EMAIL_VERIFICATION_TTL_HOURS]
+  );
+
+  return token;
+}
+
+function buildVerificationUrl(token, redirect) {
+  const base = getPublicAppBaseUrl();
+  try {
+    const url = new URL(base);
+    url.pathname = '/verify-email';
+    url.searchParams.set('token', token);
+    if (redirect) {
+      url.searchParams.set('redirect', redirect);
+    }
+    return url.toString();
+  } catch (_) {
+    const normalizedBase = base.replace(/\/$/, '');
+    const params = new URLSearchParams({ token });
+    if (redirect) {
+      params.set('redirect', redirect);
+    }
+    return `${normalizedBase}/verify-email?${params.toString()}`;
+  }
+}
+
+async function sendVerificationEmail(userRow, token, options = {}) {
+  const displayName = userRow.name ? userRow.name.trim() : null;
+  const verificationUrl = buildVerificationUrl(token, options.redirect);
+
+  const textBody = [
+    `Salut${displayName ? `, ${displayName}` : ''}!`,
+    '',
+    'Confirmă-ți adresa de email pentru a-ți activa contul Pris-Com.',
+    verificationUrl,
+    '',
+    'Dacă nu tu ai creat contul, ignoră acest mesaj.',
+  ].join('\n');
+
+  const htmlBody = [
+    '<!DOCTYPE html>',
+    '<html lang="ro">',
+    '  <body style="font-family: Arial, sans-serif; color: #111; background-color: #f7f7f8; padding: 24px;">',
+    `    <h2 style="font-weight: 600; color: #111;">Salut${displayName ? `, ${escapeHtml(displayName)}` : ''}!</h2>`,
+    '    <p>Mai ai un singur pas: confirmă-ți adresa de email pentru a-ți activa contul pe <strong>pris-com.ro</strong>.</p>',
+    `    <p style="margin: 24px 0;"><a href="${escapeHtml(verificationUrl)}" style="display: inline-block; padding: 12px 20px; background-color: #facc15; color: #111; font-weight: 600; text-decoration: none; border-radius: 9999px;">Activează-ți contul</a></p>`,
+    '    <p style="color: #444;">Dacă butonul nu merge, copiază și lipește în browser următorul link:</p>',
+    `    <p style="word-break: break-all;"><a href="${escapeHtml(verificationUrl)}">${escapeHtml(verificationUrl)}</a></p>`,
+    '    <p style="margin-top: 32px; color: #555;">Dacă nu tu ai creat acest cont, poți ignora mesajul.</p>',
+    '    <p style="margin-top: 24px;">Mulțumim,<br /><strong>Echipa Pris-Com</strong></p>',
+    '  </body>',
+    '</html>',
+  ].join('\n');
+
+  return sendMailSafe({
+    to: userRow.email,
+    subject: 'Confirmă-ți contul Pris-Com',
+    text: textBody,
+    html: htmlBody,
+    from: process.env.SMTP_FROM,
+  });
+}
+
+async function issueEmailVerification(userRow, options = {}) {
+  const token = await createEmailVerificationToken(userRow.id);
+  const mailResult = await sendVerificationEmail(userRow, token, options);
+  return { token, emailSent: Boolean(mailResult) };
 }
 
 async function loadUserById(id) {
@@ -207,40 +338,24 @@ router.post('/register', async (req, res) => {
     return res.status(500).json({ error: 'Nu am putut crea contul. Încearcă din nou.' });
   }
 
-  if (isMailerConfigured()) {
-    const displayName = userRow.name ? userRow.name.trim() : null;
-    const textBody = [
-      `Bine ai venit${displayName ? `, ${displayName}` : ''}!`,
-      '',
-      'Ți-am creat contul pe pris-com.ro. Poți accesa rezervările tale și să gestionezi plecările direct din contul tău.',
-      '',
-      'Dacă nu tu ai creat acest cont, te rugăm să ne contactezi.',
-    ].join('\n');
+  const { emailSent } = await issueEmailVerification(userRow);
 
-    const htmlBody = [
-      '<!DOCTYPE html>',
-      '<html lang="ro">',
-      '  <body style="font-family: Arial, sans-serif; color: #111;">',
-      `    <p>Bine ai venit${displayName ? `, ${escapeHtml(displayName)}` : ''}!</p>`,
-      '    <p>Contul tău pe <strong>pris-com.ro</strong> a fost creat cu succes. De acum poți vedea și gestiona rezervările online.</p>',
-      '    <p>Dacă nu tu ai inițiat această acțiune, anunță-ne imediat pentru a securiza contul.</p>',
-      '    <p style="margin-top: 24px;">Mulțumim,<br /><strong>Echipa Pris-Com</strong></p>',
-      '  </body>',
-      '</html>',
-    ].join('\n');
-
-    sendMailSafe({
-      to: normalizedEmail,
-      subject: 'Bine ai venit la Pris-Com',
-      text: textBody,
-      html: htmlBody,
-      from: process.env.SMTP_FROM,
-    });
+  let message;
+  if (emailSent) {
+    message = 'Ți-am trimis un email cu linkul de confirmare. Verifică inbox-ul pentru a activa contul.';
+  } else if (!isMailerConfigured()) {
+    message =
+      'Contul a fost creat, dar trimiterea emailului de confirmare nu este disponibilă momentan. Te rugăm să contactezi echipa Pris-Com pentru activare.';
+  } else {
+    message =
+      'Contul a fost creat, însă nu am reușit să trimitem emailul de confirmare. Încearcă din nou peste câteva minute sau contactează-ne.';
   }
 
-  return createSession(req, res, userRow, {
-    statusCode: 201,
-    message: 'Cont creat cu succes! Bine ai venit.',
+  return res.status(201).json({
+    success: true,
+    message,
+    pendingVerification: true,
+    emailSent,
   });
 });
 
@@ -274,10 +389,137 @@ router.post('/login', async (req, res) => {
     return res.json({ success: false, message: 'Email sau parolă incorecte.' });
   }
 
+  if (!userRow.email_verified_at) {
+    const { emailSent } = await issueEmailVerification(userRow);
+    let message;
+    if (emailSent) {
+      message = 'Trebuie să îți confirmi adresa de email înainte de autentificare. Ți-am trimis un nou email cu linkul de activare.';
+    } else if (!isMailerConfigured()) {
+      message =
+        'Trebuie să îți confirmi adresa de email înainte de autentificare, însă trimiterea automată a mesajului nu este disponibilă momentan. Te rugăm să contactezi echipa Pris-Com.';
+    } else {
+      message =
+        'Trebuie să îți confirmi adresa de email înainte de autentificare. Nu am putut retrimite emailul de confirmare, încearcă din nou mai târziu sau contactează-ne.';
+    }
+
+    return res.json({ success: false, message, needsVerification: true, emailSent });
+  }
+
   return createSession(req, res, userRow, {
     remember: Boolean(remember),
     message: 'Autentificare reușită.',
   });
+});
+
+router.post('/email/verify', async (req, res) => {
+  const { token } = req.body || {};
+  const rawToken = typeof token === 'string' ? token.trim() : '';
+  if (!rawToken) {
+    return res.status(400).json({ error: 'Tokenul de verificare lipsește.' });
+  }
+
+  await ensureEmailVerificationTable();
+
+  const tokenHash = sha256(rawToken);
+  const { rows } = await db.query(
+    `SELECT v.id, v.user_id, v.expires_at, v.consumed_at, u.email_verified_at
+       FROM public_user_email_verifications v
+       JOIN public_users u ON u.id = v.user_id
+      WHERE v.token_hash = ?
+      LIMIT 1`,
+    [tokenHash]
+  );
+
+  if (!rows.length) {
+    return res.json({ success: false, message: 'Linkul de verificare nu este valid sau a expirat.', needsVerification: true });
+  }
+
+  const record = rows[0];
+  const numericUserId = typeof record.user_id === 'bigint' ? Number(record.user_id) : Number(record.user_id);
+  if (!Number.isFinite(numericUserId)) {
+    return res.status(400).json({ error: 'Token de verificare invalid.' });
+  }
+  const expiresAt = record.expires_at ? new Date(record.expires_at) : null;
+
+  if (record.consumed_at) {
+    const userRow = await loadUserById(numericUserId);
+    if (userRow && userRow.email_verified_at) {
+      return createSession(req, res, userRow, {
+        message: 'Emailul tău era deja confirmat. Te-am autentificat.',
+      });
+    }
+    return res.json({ success: false, message: 'Linkul de verificare a fost deja folosit. Cere un link nou.', needsVerification: true });
+  }
+
+  if (expiresAt && expiresAt.getTime() < Date.now()) {
+    await db.query(
+      'UPDATE public_user_email_verifications SET consumed_at = NOW(), updated_at = NOW() WHERE id = ? AND consumed_at IS NULL',
+      [record.id]
+    );
+    return res.json({ success: false, message: 'Linkul de verificare a expirat. Cere un link nou.', needsVerification: true, expired: true });
+  }
+
+  await db.query(
+    'UPDATE public_user_email_verifications SET consumed_at = NOW(), updated_at = NOW() WHERE id = ? AND consumed_at IS NULL',
+    [record.id]
+  );
+  await db.query(
+    'UPDATE public_users SET email_verified_at = NOW(), updated_at = NOW() WHERE id = ? AND email_verified_at IS NULL',
+    [numericUserId]
+  );
+
+  const userRow = await loadUserById(numericUserId);
+  if (!userRow) {
+    return res.status(404).json({ error: 'Contul nu mai există.' });
+  }
+
+  return createSession(req, res, userRow, {
+    message: 'Email confirmat! Contul tău a fost activat.',
+  });
+});
+
+router.post('/email/resend', async (req, res) => {
+  const { email } = req.body || {};
+  const normalizedEmail = normalizeEmail(email);
+
+  if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
+    return res.status(400).json({ error: 'Te rugăm să introduci o adresă de email validă.' });
+  }
+
+  const { rows } = await db.query(
+    `SELECT id, email, name, email_verified_at
+       FROM public_users
+      WHERE email_normalized = ?
+      LIMIT 1`,
+    [normalizedEmail]
+  );
+
+  if (!rows.length) {
+    return res.json({
+      success: true,
+      message: 'Dacă există un cont pentru această adresă, vei primi în scurt timp un email de confirmare.',
+    });
+  }
+
+  const userRow = rows[0];
+  if (userRow.email_verified_at) {
+    return res.json({ success: true, message: 'Emailul este deja confirmat. Te poți autentifica în cont.' });
+  }
+
+  const { emailSent } = await issueEmailVerification(userRow);
+
+  let message;
+  if (emailSent) {
+    message = 'Ți-am trimis din nou emailul de confirmare. Verifică și folderele de spam sau promoții.';
+  } else if (!isMailerConfigured()) {
+    message =
+      'Nu am putut trimite emailul de confirmare pentru că serviciul de email nu este configurat. Te rugăm să contactezi echipa Pris-Com pentru activare.';
+  } else {
+    message =
+      'Nu am reușit să retrimitem emailul de confirmare. Încearcă din nou peste câteva minute sau contactează-ne.';
+  }
+
+  return res.json({ success: true, message, emailSent });
 });
 
 router.post('/refresh', async (req, res) => {
