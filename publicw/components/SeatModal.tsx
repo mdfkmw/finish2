@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import type {
   DiscountTypeOption,
   IntentInfo,
@@ -10,7 +11,7 @@ import type {
   SeatMapResponse,
   SeatVehicle,
 } from '@/lib/api'
-import { createIntent, deleteIntent, fetchTripDiscountTypes, fetchTripIntents, fetchTripSeatMap, validatePromoCode } from '@/lib/api'
+import { ApiError, createIntent, deleteIntent, fetchTripDiscountTypes, fetchTripIntents, fetchTripSeatMap, validatePromoCode } from '@/lib/api'
 import { usePublicSession } from '@/components/PublicSessionProvider'
 import { formatPrice, formatRoDate } from '@/lib/format'
 import MapPreviewDialog, { type MapPreviewData } from '@/components/MapPreviewDialog'
@@ -69,6 +70,7 @@ function computeDiscountAmount(basePrice: number, discount: DiscountTypeOption |
 }
 
 export default function SeatModal({ isOpen, onClose, onConfirm, trip, travelDate }: SeatModalProps) {
+  const router = useRouter()
   const { session } = usePublicSession()
   const [seatData, setSeatData] = useState<SeatMapResponse | null>(null)
   const [activeVehicle, setActiveVehicle] = useState<number | null>(null)
@@ -655,7 +657,20 @@ export default function SeatModal({ isOpen, onClose, onConfirm, trip, travelDate
         promo: appliedPromo,
       })
     } catch (err: any) {
-      setSubmitError(err?.message || 'Nu am putut finaliza rezervarea. Încearcă din nou.')
+      if (err instanceof ApiError) {
+        const needsProfileUpdate = Boolean((err as ApiError & { payload?: any })?.payload?.needsProfileUpdate)
+        if (needsProfileUpdate || err.status === 428) {
+          const message = err.message || 'Completează numărul de telefon din cont pentru a continua.'
+          setSubmitError(message)
+          setSubmitting(false)
+          onClose()
+          router.push('/account?missing=contact')
+          return
+        }
+        setSubmitError(err.message || 'Nu am putut finaliza rezervarea. Încearcă din nou.')
+      } else {
+        setSubmitError(err?.message || 'Nu am putut finaliza rezervarea. Încearcă din nou.')
+      }
       setSubmitting(false)
       return
     }

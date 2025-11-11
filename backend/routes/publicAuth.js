@@ -296,6 +296,62 @@ router.get('/session', async (req, res) => {
   return res.json({ success: true, session: buildSession(userRow) });
 });
 
+router.put('/profile', requirePublicAuth, async (req, res) => {
+  const { name, phone } = req.body || {};
+
+  const cleanedPhone = normalizePhone(phone);
+  if (!cleanedPhone) {
+    return res.status(400).json({ error: 'Introdu un număr de telefon valid.' });
+  }
+  const normalizedDigits = normalizePhoneDigits(cleanedPhone);
+  if (!normalizedDigits) {
+    return res.status(400).json({ error: 'Introdu un număr de telefon valid.' });
+  }
+
+  const cleanedName =
+    typeof name === 'string' && name.trim().length
+      ? name.trim().slice(0, 255)
+      : null;
+
+  let existingPhone = null;
+  try {
+    const { rows } = await db.query('SELECT phone FROM public_users WHERE id = ? LIMIT 1', [req.publicUser.id]);
+    if (rows.length) {
+      existingPhone = rows[0].phone || null;
+    }
+  } catch (err) {
+    console.error('[public/auth/profile] load current phone failed', err);
+    return res.status(500).json({ error: 'Nu am putut actualiza profilul. Încearcă din nou.' });
+  }
+
+  const updateParts = ['name = ?', 'phone = ?', 'phone_normalized = ?', 'updated_at = NOW()'];
+  const params = [cleanedName, cleanedPhone, normalizedDigits];
+
+  if ((existingPhone || '') !== (cleanedPhone || '')) {
+    updateParts.push('phone_verified_at = NULL');
+  }
+
+  params.push(req.publicUser.id);
+
+  try {
+    await db.query(`UPDATE public_users SET ${updateParts.join(', ')} WHERE id = ?`, params);
+  } catch (err) {
+    console.error('[public/auth/profile] update failed', err);
+    return res.status(500).json({ error: 'Nu am putut actualiza profilul. Încearcă din nou.' });
+  }
+
+  const updatedUser = await loadUserById(req.publicUser.id);
+  if (!updatedUser) {
+    return res.status(500).json({ error: 'Nu am putut încărca datele actualizate ale contului.' });
+  }
+
+  return res.json({
+    success: true,
+    message: 'Profil actualizat cu succes.',
+    session: buildSession(updatedUser),
+  });
+});
+
 router.post('/register', async (req, res) => {
   const { email, password, name, phone } = req.body || {};
   const normalizedEmail = normalizeEmail(email);
@@ -307,6 +363,15 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'Parola trebuie să aibă cel puțin 8 caractere.' });
   }
 
+  const cleanedPhone = normalizePhone(phone);
+  if (!cleanedPhone) {
+    return res.status(400).json({ error: 'Numărul de telefon este obligatoriu.' });
+  }
+  const normalizedDigits = normalizePhoneDigits(cleanedPhone);
+  if (!normalizedDigits) {
+    return res.status(400).json({ error: 'Introdu un număr de telefon valid.' });
+  }
+
   const existing = await db.query(
     'SELECT id FROM public_users WHERE email_normalized = ? LIMIT 1',
     [normalizedEmail]
@@ -316,17 +381,15 @@ router.post('/register', async (req, res) => {
   }
 
   const hashedPassword = await bcrypt.hash(String(password), 12);
-  const cleanedPhone = normalizePhone(phone);
-  const normalizedDigits = normalizePhoneDigits(cleanedPhone);
 
   const insert = await db.query(
-    `INSERT INTO public_users (email, email_normalized, password_hash, name, phone, phone_normalized, created_at, updated_at)
+    `INSERT INTO public_users (email, email_normalized, password_hash, name, phone, phone_normalized, created_at, updated_at)`
      VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
     [
       String(email).trim(),
       normalizedEmail,
       hashedPassword,
-      name ? String(name).trim() : null,
+      name ? String(name).trim().slice(0, 255) : null,
       cleanedPhone,
       normalizedDigits,
     ]
