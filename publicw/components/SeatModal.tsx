@@ -87,6 +87,16 @@ export default function SeatModal({ isOpen, onClose, onConfirm, trip, travelDate
   const [promoLoading, setPromoLoading] = useState(false)
   const [appliedPromo, setAppliedPromo] = useState<PromoApplyPayload | null>(null)
   const [seatFeedback, setSeatFeedback] = useState<string | null>(null)
+  const bookingBlockedReason = useMemo(() => {
+    if (!trip) return null
+    if (trip.booking_blocked_reason) return trip.booking_blocked_reason
+    if (seatData?.booking_blocked_reason) return seatData.booking_blocked_reason
+    if (trip.booking_window_open === false || seatData?.booking_window_open === false) {
+      return 'Rezervările pentru această cursă sunt închise.'
+    }
+    return null
+  }, [trip, seatData])
+  const bookingLocked = Boolean(bookingBlockedReason)
   const [mapPreview, setMapPreview] = useState<MapPreviewData | null>(null)
   const [intentHolds, setIntentHolds] = useState<Map<number, 'mine' | 'other'>>(new Map())
   const [discountTypes, setDiscountTypes] = useState<DiscountTypeOption[]>([])
@@ -255,6 +265,12 @@ export default function SeatModal({ isOpen, onClose, onConfirm, trip, travelDate
       cancelled = true
     }
   }, [isOpen, trip])
+
+  useEffect(() => {
+    if (bookingBlockedReason) {
+      setSeatFeedback((prev) => prev || bookingBlockedReason)
+    }
+  }, [bookingBlockedReason])
 
   useEffect(() => {
     if (!isOpen) {
@@ -579,6 +595,10 @@ export default function SeatModal({ isOpen, onClose, onConfirm, trip, travelDate
 
   const toggleSeat = useCallback(async (seatId: number) => {
     if (!trip || !currentVehicle) return
+    if (bookingBlockedReason) {
+      setSeatFeedback(bookingBlockedReason)
+      return
+    }
     const seat = currentVehicle.seats.find((s) => s.id === seatId)
     if (!seat) return
     if (seat.seat_type === 'driver' || seat.seat_type === 'guide') return
@@ -612,10 +632,14 @@ export default function SeatModal({ isOpen, onClose, onConfirm, trip, travelDate
       await reloadSeatData(false)
       await refreshIntents()
     }
-  }, [trip, currentVehicle, intentHolds, refreshIntents, reloadSeatData])
+  }, [trip, currentVehicle, intentHolds, refreshIntents, reloadSeatData, bookingBlockedReason])
 
   const handleSubmit = async () => {
     if (!trip || !selectedSeats.length) return
+    if (bookingLocked) {
+      setSubmitError(bookingBlockedReason || 'Rezervările pentru această cursă sunt închise.')
+      return
+    }
     const trimmedName = contact.name.trim()
     const trimmedPhone = contact.phone.trim()
     const trimmedEmail = contact.email.trim()
@@ -679,6 +703,10 @@ export default function SeatModal({ isOpen, onClose, onConfirm, trip, travelDate
 
   const handleApplyPromo = async () => {
     if (!trip) return
+    if (bookingLocked) {
+      setPromoFeedback(bookingBlockedReason || 'Rezervările pentru această cursă sunt închise.')
+      return
+    }
     const code = promoCode.trim()
     if (!code) {
       setPromoFeedback('Introdu un cod de reducere înainte de a aplica.')
@@ -784,6 +812,11 @@ export default function SeatModal({ isOpen, onClose, onConfirm, trip, travelDate
             {seatFeedback && !loading && !error && (
               <div className="rounded-xl bg-amber-500/15 px-4 py-2 text-sm text-amber-100">
                 {seatFeedback}
+              </div>
+            )}
+            {bookingBlockedReason && !loading && !error && (
+              <div className="rounded-xl border border-rose-400/40 bg-rose-500/10 px-4 py-2 text-sm text-rose-100">
+                {bookingBlockedReason}
               </div>
             )}
 
@@ -1200,7 +1233,7 @@ export default function SeatModal({ isOpen, onClose, onConfirm, trip, travelDate
 
                   <button
                     className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={submitting || !selectedSeats.length}
+                    disabled={submitting || !selectedSeats.length || bookingLocked}
                     onClick={handleSubmit}
                   >
                     {submitting ? 'Se procesează…' : 'Continuă la rezervare 🔒'}

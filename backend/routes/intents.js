@@ -7,6 +7,7 @@ const INTENT_TTL_SECONDS = Number(process.env.RESERVATION_INTENT_TTL_SECONDS || 
 const CLEANUP_INTERVAL_MS = 60_000;
 
 const { ensureIntentOwner } = require('../utils/intentOwner');
+const { loadOnlineSettings, evaluateBookingWindow } = require('../utils/onlineSettings');
 
 function normalizeId(value) {
   const num = Number(value);
@@ -43,6 +44,39 @@ router.post('/', async (req, res) => {
   const ownerId = getOwnerId(req, res);
 
   try {
+    const tripMeta = await db.query(
+      `SELECT DATE_FORMAT(date, '%Y-%m-%d') AS trip_date,
+              DATE_FORMAT(time, '%H:%i')   AS trip_time,
+              boarding_started
+         FROM trips
+        WHERE id = ?
+        LIMIT 1`,
+      [tripId]
+    );
+    const tripRow = tripMeta.rows?.[0] || null;
+    if (!tripRow) {
+      return res.status(404).json({ error: 'Cursa nu există.' });
+    }
+    if (Number(tripRow.boarding_started)) {
+      return res.status(409).json({ error: 'Îmbarcarea a început pentru această cursă. Rezervările nu mai sunt disponibile.' });
+    }
+    try {
+      const settings = await loadOnlineSettings();
+      const windowCheck = evaluateBookingWindow({
+        date: tripRow.trip_date,
+        time: tripRow.trip_time,
+        settings,
+        includeLeadTime: true,
+        includeMaxAdvance: true,
+        now: new Date(),
+      });
+      if (!windowCheck.allowed) {
+        return res.status(409).json({ error: windowCheck.reason || 'Rezervările pentru această cursă sunt închise.' });
+      }
+    } catch (settingsErr) {
+      console.warn('[reservation_intents] online settings check failed', settingsErr);
+    }
+
     const existing = await db.query(
       `SELECT id, user_id FROM reservation_intents WHERE trip_id = ? AND seat_id = ? LIMIT 1`,
       [tripId, seatId]

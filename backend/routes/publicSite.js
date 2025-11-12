@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const { normalizeDirection, isReturnDirection } = require('../utils/direction');
 const { ensureIntentOwner } = require('../utils/intentOwner');
+const { loadOnlineSettings, evaluateBookingWindow } = require('../utils/onlineSettings');
 const { requirePublicAuth } = require('../middleware/publicAuth');
 
 const PUBLIC_CATEGORY_CANDIDATES = (() => {
@@ -327,9 +328,30 @@ async function validatePromoForTrip(client, {
     return { valid: false, reason: 'Cursa nu mai este disponibilă.' };
   }
 
+  if (Number(trip.boarding_started)) {
+    return { valid: false, reason: 'Îmbarcarea a început pentru această cursă.' };
+  }
+
   const travelDate = sanitizeDate(trip.date);
   if (!travelDate) {
     return { valid: false, reason: 'Data cursei nu a putut fi validată.' };
+  }
+
+  try {
+    const settings = await loadOnlineSettings();
+    const windowCheck = evaluateBookingWindow({
+      date: travelDate,
+      time: trip.departure_time || trip.time,
+      settings,
+      includeLeadTime: true,
+      includeMaxAdvance: true,
+      now: new Date(),
+    });
+    if (!windowCheck.allowed) {
+      return { valid: false, reason: windowCheck.reason || 'Rezervările pentru această cursă sunt închise.' };
+    }
+  } catch (settingsErr) {
+    console.warn('[public/promo] online settings check failed', settingsErr);
   }
 
   let priceInfo = priceInfoOverride;
@@ -538,6 +560,7 @@ async function loadTripBasics(client, tripId) {
       t.date,
       DATE_FORMAT(t.time, '%H:%i') AS departure_time,
       t.time,
+      t.boarding_started,
       rs.direction,
       rs.id AS schedule_id
     FROM trips t
@@ -1035,6 +1058,8 @@ router.get('/trips', async (req, res) => {
   }
 
   try {
+    const onlineSettings = await loadOnlineSettings();
+    const now = new Date();
     const { rows } = await db.query(
       `
       SELECT
@@ -1108,7 +1133,26 @@ router.get('/trips', async (req, res) => {
       }
 
       const available = Number.isFinite(seatInfo.totalAvailable) ? seatInfo.totalAvailable : null;
-      const canBook = available == null ? true : available >= Math.max(passengers, 1);
+      const boardingStarted = Number(seatInfo.trip?.boarding_started) === 1;
+      const windowCheck = evaluateBookingWindow({
+        date,
+        time: trip.departure_time,
+        settings: onlineSettings,
+        includeLeadTime: true,
+        includeMaxAdvance: true,
+        now,
+      });
+      let bookingReason = null;
+      if (!windowCheck.allowed) {
+        bookingReason = windowCheck.reason || 'Rezervările pentru această cursă sunt închise.';
+      }
+      if (boardingStarted) {
+        bookingReason = 'Îmbarcarea a început pentru această cursă. Rezervările nu mai sunt disponibile.';
+      }
+      const bookingWindowOpen = windowCheck.allowed && !boardingStarted;
+      const canBook = bookingWindowOpen
+        ? (available == null ? true : available >= Math.max(passengers, 1))
+        : false;
 
       results.push({
         trip_id: trip.trip_id,
@@ -1124,6 +1168,9 @@ router.get('/trips', async (req, res) => {
         pricing_category_id: priceInfo?.pricing_category_id ?? null,
         available_seats: available,
         can_book: canBook,
+        boarding_started: boardingStarted,
+        booking_window_open: bookingWindowOpen,
+        booking_blocked_reason: canBook ? null : bookingReason,
         board_station_id: fromStationId,
         exit_station_id: toStationId,
         date,
@@ -1161,12 +1208,41 @@ router.get('/trips/:tripId/seats', async (req, res) => {
       return res.status(404).json({ error: 'Nu am găsit diagrama pentru cursa selectată.' });
     }
 
+    const boardingStarted = Number(seatInfo.trip?.boarding_started) === 1;
+    const tripDate = sanitizeDate(seatInfo.trip?.date);
+    let bookingBlockedReason = null;
+    let bookingWindowOpen = true;
+    try {
+      const settings = await loadOnlineSettings();
+      const windowCheck = evaluateBookingWindow({
+        date: tripDate,
+        time: seatInfo.trip?.departure_time || seatInfo.trip?.time,
+        settings,
+        includeLeadTime: true,
+        includeMaxAdvance: true,
+        now: new Date(),
+      });
+      if (!windowCheck.allowed) {
+        bookingWindowOpen = false;
+        bookingBlockedReason = windowCheck.reason || 'Rezervările pentru această cursă sunt închise.';
+      }
+    } catch (settingsErr) {
+      console.warn('[public/trip seats] online settings check failed', settingsErr);
+    }
+    if (boardingStarted) {
+      bookingWindowOpen = false;
+      bookingBlockedReason = 'Îmbarcarea a început pentru această cursă. Rezervările nu mai sunt disponibile.';
+    }
+
     const payload = {
       trip_id: tripId,
       board_station_id: boardStationId,
       exit_station_id: exitStationId,
       available_seats: seatInfo.totalAvailable,
-        vehicles: seatInfo.vehicles.map((veh) => ({
+      boarding_started: boardingStarted,
+      booking_window_open: bookingWindowOpen,
+      booking_blocked_reason: bookingWindowOpen ? null : bookingBlockedReason,
+      vehicles: seatInfo.vehicles.map((veh) => ({
           vehicle_id: veh.vehicle_id,
           vehicle_name: veh.vehicle_name,
           plate_number: veh.plate_number,
@@ -1201,6 +1277,10 @@ router.get('/trips/:tripId/discount-types', async (req, res) => {
     const trip = await loadTripBasics(null, tripId);
     if (!trip) {
       return res.status(404).json({ error: 'Cursa nu a fost găsită.' });
+    }
+
+    if (Number(trip.boarding_started)) {
+      return res.status(409).json({ error: 'Îmbarcarea a început pentru această cursă.' });
     }
 
     const discounts = await fetchOnlineDiscountTypes(null, trip.schedule_id);
@@ -1587,6 +1667,32 @@ router.post('/reservations', async (req, res) => {
       await conn.rollback();
       conn.release();
       return res.status(404).json({ error: 'Cursa selectată nu există sau este indisponibilă.' });
+    }
+
+    if (Number(trip.boarding_started)) {
+      await conn.rollback();
+      conn.release();
+      return res.status(409).json({ error: 'Îmbarcarea a început pentru această cursă. Rezervările nu mai sunt disponibile.' });
+    }
+
+    const sanitizedTripDate = sanitizeDate(trip.date);
+    try {
+      const settings = await loadOnlineSettings();
+      const windowCheck = evaluateBookingWindow({
+        date: sanitizedTripDate,
+        time: trip.departure_time || trip.time,
+        settings,
+        includeLeadTime: true,
+        includeMaxAdvance: true,
+        now: new Date(),
+      });
+      if (!windowCheck.allowed) {
+        await conn.rollback();
+        conn.release();
+        return res.status(409).json({ error: windowCheck.reason || 'Rezervările nu mai sunt disponibile pentru această cursă.' });
+      }
+    } catch (settingsErr) {
+      console.warn('[public/reservations] online settings check failed', settingsErr);
     }
 
     const stationSeq = await loadTripStationSequences(conn, tripId);

@@ -6,6 +6,7 @@ const router = express.Router();
 
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { normalizeDirection, isReturnDirection, ensureDirection } = require('../utils/direction');
+const { loadOnlineSettings, evaluateBookingWindow } = require('../utils/onlineSettings');
 
 // ✅ Acces pentru rutele interne (admin, operator_admin, agent, driver)
 router.use(['/', '/:id'], (req, res, next) => {
@@ -560,6 +561,11 @@ router.post('/', async (req, res) => {
   const createdReservationIds = [];
   const updatedReservations = [];
 
+  const hasNewPassengers = passengers.some((p) => {
+    const rid = Number(p?.reservation_id);
+    return !Number.isInteger(rid) || rid <= 0;
+  });
+
   // ─────────────────────────────────────────────────────────────────────
   // 0) PREP PROMO: O singură tranzacție dedicată promo-ului pe tot request-ul
   // ─────────────────────────────────────────────────────────────────────
@@ -651,6 +657,29 @@ router.post('/', async (req, res) => {
       return abortWithError(400, { error: 'Ora plecării nu a putut fi determinată' });
     }
 
+    if (hasNewPassengers) {
+      try {
+        const settings = await loadOnlineSettings();
+        if (settings.blockPastReservations) {
+          const windowCheck = evaluateBookingWindow({
+            date,
+            time: canonicalTime,
+            settings,
+            includeLeadTime: false,
+            includeMaxAdvance: false,
+            now: new Date(),
+          });
+          if (!windowCheck.allowed) {
+            return abortWithError(409, {
+              error: windowCheck.reason || 'Cursa a plecat deja. Nu se mai pot face rezervări noi.',
+            });
+          }
+        }
+      } catch (settingsErr) {
+        console.warn('[POST /api/reservations] online settings check failed', settingsErr);
+      }
+    }
+
     // 1) stațiile rutei
     const stopsInfo = await getStops(route_id, resolvedDirection);
     if (!stopsInfo.ordered.length) {
@@ -660,7 +689,7 @@ router.post('/', async (req, res) => {
     // 2) trip existent sau îl creăm
     let trip_id;
     const tripRes = await db.query(
-      `SELECT id FROM trips
+      `SELECT id, boarding_started FROM trips
         WHERE route_schedule_id = ?
           AND vehicle_id = ?
           AND date = DATE(?)
@@ -669,7 +698,13 @@ router.post('/', async (req, res) => {
       [resolvedScheduleId, vehicle_id, date, canonicalTime]
     );
     if (tripRes.rows.length > 0) {
-      trip_id = tripRes.rows[0].id;
+      const existingTrip = tripRes.rows[0];
+      if (Number(existingTrip.boarding_started)) {
+        if (hasNewPassengers) {
+          return abortWithError(409, { error: 'Îmbarcarea a început pentru această cursă. Nu se mai pot face rezervări noi.' });
+        }
+      }
+      trip_id = existingTrip.id;
     } else {
       const ins = await db.query(
         `INSERT INTO trips (route_schedule_id, route_id, vehicle_id, date, time)
@@ -1266,7 +1301,9 @@ router.post('/moveToOtherTrip', async (req, res) => {
     const cid = randomUUID();
     // info trip nou + stații
     const tripInfoRes = await db.query(
-      `SELECT t.route_id, rs.direction
+      `SELECT t.route_id, rs.direction, t.boarding_started,
+              DATE_FORMAT(t.date, '%Y-%m-%d') AS trip_date,
+              DATE_FORMAT(t.time, '%H:%i')   AS trip_time
          FROM trips t
          JOIN route_schedules rs ON rs.id = t.route_schedule_id
         WHERE t.id = ?`,
@@ -1274,6 +1311,31 @@ router.post('/moveToOtherTrip', async (req, res) => {
     );
     if (!tripInfoRes.rowCount) {
       return res.status(400).json({ error: 'Cursa selectată nu există' });
+    }
+
+    if (Number(tripInfoRes.rows[0].boarding_started)) {
+      return res.status(409).json({ error: 'Îmbarcarea a început pentru această cursă. Nu se mai pot face mutări către ea.' });
+    }
+
+    try {
+      const settings = await loadOnlineSettings();
+      if (settings.blockPastReservations) {
+        const windowCheck = evaluateBookingWindow({
+          date: tripInfoRes.rows[0].trip_date,
+          time: tripInfoRes.rows[0].trip_time,
+          settings,
+          includeLeadTime: false,
+          includeMaxAdvance: false,
+          now: new Date(),
+        });
+        if (!windowCheck.allowed) {
+          return res.status(409).json({
+            error: windowCheck.reason || 'Cursa este în trecut. Nu se mai pot face mutări către ea.',
+          });
+        }
+      }
+    } catch (settingsErr) {
+      console.warn('[moveToOtherTrip] online settings check failed', settingsErr);
     }
 
     const stopsInfo = await getStops(
@@ -1529,6 +1591,44 @@ router.post('/move', async (req, res) => {
       [reservation_id]
     );
     const before = beforeQ.rows?.[0] || null;
+    const tripCheck = await db.query(
+      `SELECT DATE_FORMAT(date, '%Y-%m-%d') AS trip_date,
+              DATE_FORMAT(time, '%H:%i') AS trip_time,
+              boarding_started
+         FROM trips
+        WHERE id = ?
+        LIMIT 1`,
+      [trip_id]
+    );
+    const targetTrip = tripCheck.rows?.[0] || null;
+    if (!targetTrip) {
+      return res.status(404).json({ error: 'Cursa selectată nu există.' });
+    }
+    if (Number(targetTrip.boarding_started)) {
+      return res.status(409).json({ error: 'Îmbarcarea a început pentru această cursă. Nu se mai pot face mutări.' });
+    }
+    if (!before || Number(before.trip_id) !== Number(trip_id)) {
+      try {
+        const settings = await loadOnlineSettings();
+        if (settings.blockPastReservations) {
+          const windowCheck = evaluateBookingWindow({
+            date: targetTrip.trip_date,
+            time: targetTrip.trip_time,
+            settings,
+            includeLeadTime: false,
+            includeMaxAdvance: false,
+            now: new Date(),
+          });
+          if (!windowCheck.allowed) {
+            return res.status(409).json({
+              error: windowCheck.reason || 'Cursa este în trecut. Nu se mai pot face mutări către ea.',
+            });
+          }
+        }
+      } catch (settingsErr) {
+        console.warn('[POST /api/reservations/move] online settings check failed', settingsErr);
+      }
+    }
 
 
 
@@ -1603,6 +1703,23 @@ router.post('/public_reservation', async (req, res) => {
     const { route_id, date, name, phone, board_at, exit_at } = req.body;
     if (!route_id || !date || !name || !board_at || !exit_at) {
       return res.status(400).json({ error: 'Date incomplete pentru rezervare.' });
+    }
+
+    try {
+      const settings = await loadOnlineSettings();
+      const windowCheck = evaluateBookingWindow({
+        date,
+        time: '00:00',
+        settings,
+        includeLeadTime: true,
+        includeMaxAdvance: true,
+        now: new Date(),
+      });
+      if (settings.blockPastReservations && !windowCheck.allowed) {
+        return res.status(409).json({ error: windowCheck.reason || 'Rezervările pentru această cursă nu mai sunt disponibile.' });
+      }
+    } catch (settingsErr) {
+      console.warn('[public_reservation] online settings check failed', settingsErr);
     }
 
     // TODO: verificare antiflood / blacklist etc. ulterior

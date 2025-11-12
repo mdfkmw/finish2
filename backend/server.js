@@ -55,6 +55,7 @@ const agenciesRouter = require('./routes/agencies');
 const stationsRouter = require('./routes/stations');
 const cashRouter = require('./routes/cash');
 const fiscalSettingsRouter = require('./routes/fiscalSettings');
+const onlineSettingsRouter = require('./routes/onlineSettings');
 const phonesRoutes = require('./routes/phones');
 const travelerDefaultsRouter = require('./routes/travelerDefaults');
 const promoCodesRoutes = require('./routes/promoCodes');
@@ -161,6 +162,7 @@ app.use('/api/agencies', agenciesRouter);
 app.use('/api/stations', stationsRouter);
 app.use('/api/cash', cashRouter);
 app.use('/api/fiscal-settings', fiscalSettingsRouter);
+app.use('/api/online-settings', onlineSettingsRouter);
 
 app.use('/api/phones', phonesRoutes);
 app.use('/api/traveler-defaults', requireAuth, travelerDefaultsRouter);

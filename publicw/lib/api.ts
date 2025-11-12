@@ -95,6 +95,8 @@ export interface PublicTrip {
   pricing_category_id: number | null;
   available_seats: number | null;
   can_book: boolean;
+  booking_window_open?: boolean;
+  booking_blocked_reason?: string | null;
   board_station_id: number;
   exit_station_id: number;
   date: string;
@@ -125,6 +127,8 @@ export interface SeatMapResponse {
   board_station_id: number;
   exit_station_id: number;
   available_seats: number | null;
+  booking_window_open?: boolean;
+  booking_blocked_reason?: string | null;
   vehicles: SeatVehicle[];
 }
 
