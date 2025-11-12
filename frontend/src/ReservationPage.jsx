@@ -419,7 +419,6 @@ export default function ReservationPage({ userRole, user }) {
   // ℹ️ Info despre vehiculul atribuit (nume și nr. înmatriculare)
   const [vehicleInfo, setVehicleInfo] = useState(null);
   const [selectedTrip, setSelectedTrip] = useState(null);
-  const boardingStarted = useMemo(() => Number(selectedTrip?.boarding_started) === 1, [selectedTrip]);
   const [moveSourceSeat, setMoveSourceSeat] = useState(null);
   const [paying, setPaying] = useState(false);
   const lastSelectedSeatIdsRef = useRef([]);
@@ -3029,12 +3028,6 @@ export default function ReservationPage({ userRole, user }) {
                   </div>
                 )}
 
-                {boardingStarted && (
-                  <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                    Îmbarcarea a început pentru această cursă. Nu se mai pot face rezervări noi din aplicația internă.
-                  </div>
-                )}
-
                 {selectedHour && (
                   <div className="mb-4 flex items-center border-b space-x-4">
                     {tabs.map((tv, idx) => (
@@ -3664,13 +3657,9 @@ export default function ReservationPage({ userRole, user }) {
 
                     <button
                       onClick={handleStartSave}
-                      disabled={isSaving || boardingStarted}
-                      title={boardingStarted ? 'Îmbarcarea a început – nu se mai pot salva rezervări noi.' : undefined}
-                      className={`px-6 py-2 rounded text-white transition ${
-                        (isSaving || boardingStarted)
-                          ? 'bg-gray-300 cursor-not-allowed text-gray-600'
-                          : 'bg-green-600 hover:bg-green-700'
-                      }`}
+                      disabled={isSaving}
+                      className={`px-6 py-2 rounded text-white transition ${isSaving ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
+                        }`}
                     >
                       {isSaving ? 'Se salvează…' : 'Salvează rezervarea'}
                     </button>
