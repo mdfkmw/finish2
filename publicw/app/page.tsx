@@ -153,6 +153,7 @@ export default function Page() {
   }
 
   const handleReserve = (trip: ExtendedTrip) => {
+    if (!trip.can_book) return
     setActiveTrip(trip)
     setOpen(true)
   }
@@ -446,6 +447,11 @@ export default function Page() {
                       >
                         {trip.can_book ? 'Alege locuri' : 'Indisponibil'}
                       </button>
+                      {trip.booking_blocked_reason && (
+                        <p className="text-xs text-rose-200 mt-2">
+                          {trip.booking_blocked_reason}
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>

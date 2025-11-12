@@ -419,6 +419,24 @@ export default function ReservationPage({ userRole, user }) {
   // ℹ️ Info despre vehiculul atribuit (nume și nr. înmatriculare)
   const [vehicleInfo, setVehicleInfo] = useState(null);
   const [selectedTrip, setSelectedTrip] = useState(null);
+  const boardingStarted = useMemo(() => Number(selectedTrip?.boarding_started) === 1, [selectedTrip]);
+  const tripInPast = useMemo(() => {
+    if (!selectedTrip?.date || !selectedTrip?.time) return false;
+    const isoString = `${selectedTrip.date}T${selectedTrip.time}`;
+    const parsed = new Date(isoString);
+    if (Number.isNaN(parsed.getTime())) return false;
+    return parsed.getTime() < Date.now();
+  }, [selectedTrip]);
+  const bookingLocked = boardingStarted || tripInPast;
+  const bookingLockedMessage = useMemo(() => {
+    if (boardingStarted) {
+      return 'Îmbarcarea a început pentru această cursă. Nu se mai pot face rezervări noi din aplicația internă.';
+    }
+    if (tripInPast) {
+      return 'Cursa selectată este în trecut. Rezervările noi nu mai sunt permise, dar poți marca pasagerii neprezentați.';
+    }
+    return null;
+  }, [boardingStarted, tripInPast]);
   const [moveSourceSeat, setMoveSourceSeat] = useState(null);
   const [paying, setPaying] = useState(false);
   const lastSelectedSeatIdsRef = useRef([]);
@@ -3028,6 +3046,12 @@ export default function ReservationPage({ userRole, user }) {
                   </div>
                 )}
 
+                {bookingLockedMessage && (
+                  <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    {bookingLockedMessage}
+                  </div>
+                )}
+
                 {selectedHour && (
                   <div className="mb-4 flex items-center border-b space-x-4">
                     {tabs.map((tv, idx) => (
@@ -3657,9 +3681,13 @@ export default function ReservationPage({ userRole, user }) {
 
                     <button
                       onClick={handleStartSave}
-                      disabled={isSaving}
-                      className={`px-6 py-2 rounded text-white transition ${isSaving ? 'bg-gray-300 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
-                        }`}
+                      disabled={isSaving || bookingLocked}
+                      title={bookingLocked && bookingLockedMessage ? bookingLockedMessage : undefined}
+                      className={`px-6 py-2 rounded text-white transition ${
+                        (isSaving || bookingLocked)
+                          ? 'bg-gray-300 cursor-not-allowed text-gray-600'
+                          : 'bg-green-600 hover:bg-green-700'
+                      }`}
                     >
                       {isSaving ? 'Se salvează…' : 'Salvează rezervarea'}
                     </button>
