@@ -6,80 +6,6 @@ const db = require('../db'); // așteptat să fie mysql2/promise pool
 
 const { requireAuth, requireRole } = require('../middleware/auth');
 
-function parseBooleanFlag(value) {
-  if (value === true || value === false) return value;
-  if (value === 1 || value === '1') return true;
-  if (value === 0 || value === '0') return false;
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (['true', 'yes', 'da', 'on'].includes(normalized)) return true;
-    if (['false', 'no', 'nu', 'off'].includes(normalized)) return false;
-  }
-  return null;
-}
-
-// ================================================================
-// PATCH /api/trips/:trip_id/boarding — admin/op_admin/agent/driver
-// ================================================================
-router.patch(
-  '/:trip_id/boarding',
-  requireAuth,
-  requireRole('admin', 'operator_admin', 'agent', 'driver'),
-  async (req, res) => {
-    const tripId = Number(req.params.trip_id);
-    if (!Number.isInteger(tripId) || tripId <= 0) {
-      return res.status(400).json({ error: 'trip_id invalid' });
-    }
-
-    const rawValue = req.body?.boarding_started;
-    const parsedValue = parseBooleanFlag(rawValue);
-    if (parsedValue === null) {
-      return res.status(400).json({ error: 'Valoare boarding_started invalidă' });
-    }
-
-    try {
-      if (req.user?.role === 'driver') {
-        const driverId = Number(req.user?.id);
-        if (!Number.isInteger(driverId) || driverId <= 0) {
-          return res.status(403).json({ error: 'forbidden' });
-        }
-        const { rows: assignmentRows } = await db.query(
-          `
-          SELECT 1
-            FROM trip_vehicle_employees tve
-            JOIN trip_vehicles tv ON tv.id = tve.trip_vehicle_id
-           WHERE tve.employee_id = ?
-             AND tv.trip_id = ?
-           LIMIT 1
-          `,
-          [driverId, tripId]
-        );
-        if (!assignmentRows.length) {
-          return res.status(403).json({ error: 'Nu ești asignat pe această cursă.' });
-        }
-      }
-
-      const result = await db.query(
-        'UPDATE trips SET boarding_started = ? WHERE id = ?',
-        [parsedValue ? 1 : 0, tripId]
-      );
-
-      if (!result.rowCount) {
-        return res.status(404).json({ error: 'Cursa nu a fost găsită.' });
-      }
-
-      return res.json({
-        success: true,
-        trip_id: tripId,
-        boarding_started: !!parsedValue,
-      });
-    } catch (err) {
-      console.error('[PATCH /api/trips/:trip_id/boarding] error:', err);
-      return res.status(500).json({ error: 'Eroare la actualizarea cursei.' });
-    }
-  }
-);
-
 // ✅ Acces: admin, operator_admin, agent
 router.use(requireAuth, requireRole('admin', 'operator_admin', 'agent'));
 
@@ -157,7 +83,6 @@ router.get('/', async (req, res) => {
         t.time,
         t.route_id,
         t.vehicle_id,
-        t.boarding_started,
         rs.operator_id  AS trip_operator_id,
         r.name          AS route_name,
         v.name          AS vehicle_name,
@@ -185,12 +110,11 @@ router.get('/', async (req, res) => {
 router.get('/summary', async (_req, res) => {
   try {
     const query = `
-      SELECT
-        t.id AS trip_id,
-        t.date,
-        t.time,
-        t.boarding_started,
-        r.name AS route_name,
+      SELECT 
+        t.id AS trip_id, 
+        t.date, 
+        t.time, 
+        r.name AS route_name, 
         v.plate_number
       FROM trips t
       JOIN routes r ON t.route_id = r.id
@@ -255,7 +179,7 @@ router.get('/find', async (req, res) => {
 
     // verifică dacă există deja cursa
     const { rows: findRes } = await db.query(
-      `SELECT id, route_id, vehicle_id, date, TIME_FORMAT(time, '%H:%i') AS time, disabled, boarding_started
+      `SELECT id, route_id, vehicle_id, date, TIME_FORMAT(time, '%H:%i') AS time, disabled
          FROM trips
         WHERE route_schedule_id = ?
           AND date = DATE(?)
@@ -293,7 +217,7 @@ console.log('[trips/find] inserted trip id=', insertId);
 
     // citim trip-ul inserat după ID (safe în concurență)
     const { rows: tripRows} = await db.query(
-      `SELECT id, route_id, vehicle_id, date, TIME_FORMAT(time, '%H:%i') AS time, disabled, boarding_started
+      `SELECT id, route_id, vehicle_id, date, TIME_FORMAT(time, '%H:%i') AS time, disabled
          FROM trips
         WHERE id = ?`,
       [insertId]

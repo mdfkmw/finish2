@@ -560,11 +560,6 @@ router.post('/', async (req, res) => {
   const createdReservationIds = [];
   const updatedReservations = [];
 
-  const hasNewPassengers = passengers.some((p) => {
-    const rid = Number(p?.reservation_id);
-    return !Number.isInteger(rid) || rid <= 0;
-  });
-
   // ─────────────────────────────────────────────────────────────────────
   // 0) PREP PROMO: O singură tranzacție dedicată promo-ului pe tot request-ul
   // ─────────────────────────────────────────────────────────────────────
@@ -665,7 +660,7 @@ router.post('/', async (req, res) => {
     // 2) trip existent sau îl creăm
     let trip_id;
     const tripRes = await db.query(
-      `SELECT id, boarding_started FROM trips
+      `SELECT id FROM trips
         WHERE route_schedule_id = ?
           AND vehicle_id = ?
           AND date = DATE(?)
@@ -674,13 +669,7 @@ router.post('/', async (req, res) => {
       [resolvedScheduleId, vehicle_id, date, canonicalTime]
     );
     if (tripRes.rows.length > 0) {
-      const existingTrip = tripRes.rows[0];
-      if (Number(existingTrip.boarding_started)) {
-        if (hasNewPassengers) {
-          return abortWithError(409, { error: 'Îmbarcarea a început pentru această cursă. Nu se mai pot face rezervări noi.' });
-        }
-      }
-      trip_id = existingTrip.id;
+      trip_id = tripRes.rows[0].id;
     } else {
       const ins = await db.query(
         `INSERT INTO trips (route_schedule_id, route_id, vehicle_id, date, time)
@@ -1277,7 +1266,7 @@ router.post('/moveToOtherTrip', async (req, res) => {
     const cid = randomUUID();
     // info trip nou + stații
     const tripInfoRes = await db.query(
-      `SELECT t.route_id, rs.direction, t.boarding_started
+      `SELECT t.route_id, rs.direction
          FROM trips t
          JOIN route_schedules rs ON rs.id = t.route_schedule_id
         WHERE t.id = ?`,
@@ -1285,10 +1274,6 @@ router.post('/moveToOtherTrip', async (req, res) => {
     );
     if (!tripInfoRes.rowCount) {
       return res.status(400).json({ error: 'Cursa selectată nu există' });
-    }
-
-    if (Number(tripInfoRes.rows[0].boarding_started)) {
-      return res.status(409).json({ error: 'Îmbarcarea a început pentru această cursă. Nu se mai pot face mutări către ea.' });
     }
 
     const stopsInfo = await getStops(

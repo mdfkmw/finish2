@@ -327,10 +327,6 @@ async function validatePromoForTrip(client, {
     return { valid: false, reason: 'Cursa nu mai este disponibilă.' };
   }
 
-  if (Number(trip.boarding_started)) {
-    return { valid: false, reason: 'Îmbarcarea a început pentru această cursă.' };
-  }
-
   const travelDate = sanitizeDate(trip.date);
   if (!travelDate) {
     return { valid: false, reason: 'Data cursei nu a putut fi validată.' };
@@ -542,7 +538,6 @@ async function loadTripBasics(client, tripId) {
       t.date,
       DATE_FORMAT(t.time, '%H:%i') AS departure_time,
       t.time,
-      t.boarding_started,
       rs.direction,
       rs.id AS schedule_id
     FROM trips t
@@ -1113,8 +1108,7 @@ router.get('/trips', async (req, res) => {
       }
 
       const available = Number.isFinite(seatInfo.totalAvailable) ? seatInfo.totalAvailable : null;
-      const boardingStarted = Number(seatInfo.trip?.boarding_started) === 1;
-      const canBook = boardingStarted ? false : available == null ? true : available >= Math.max(passengers, 1);
+      const canBook = available == null ? true : available >= Math.max(passengers, 1);
 
       results.push({
         trip_id: trip.trip_id,
@@ -1130,7 +1124,6 @@ router.get('/trips', async (req, res) => {
         pricing_category_id: priceInfo?.pricing_category_id ?? null,
         available_seats: available,
         can_book: canBook,
-        boarding_started: boardingStarted,
         board_station_id: fromStationId,
         exit_station_id: toStationId,
         date,
@@ -1168,15 +1161,12 @@ router.get('/trips/:tripId/seats', async (req, res) => {
       return res.status(404).json({ error: 'Nu am găsit diagrama pentru cursa selectată.' });
     }
 
-    const boardingStarted = Number(seatInfo.trip?.boarding_started) === 1;
-
     const payload = {
       trip_id: tripId,
       board_station_id: boardStationId,
       exit_station_id: exitStationId,
       available_seats: seatInfo.totalAvailable,
-      boarding_started: boardingStarted,
-      vehicles: seatInfo.vehicles.map((veh) => ({
+        vehicles: seatInfo.vehicles.map((veh) => ({
           vehicle_id: veh.vehicle_id,
           vehicle_name: veh.vehicle_name,
           plate_number: veh.plate_number,
@@ -1211,10 +1201,6 @@ router.get('/trips/:tripId/discount-types', async (req, res) => {
     const trip = await loadTripBasics(null, tripId);
     if (!trip) {
       return res.status(404).json({ error: 'Cursa nu a fost găsită.' });
-    }
-
-    if (Number(trip.boarding_started)) {
-      return res.status(409).json({ error: 'Îmbarcarea a început pentru această cursă.' });
     }
 
     const discounts = await fetchOnlineDiscountTypes(null, trip.schedule_id);
@@ -1601,12 +1587,6 @@ router.post('/reservations', async (req, res) => {
       await conn.rollback();
       conn.release();
       return res.status(404).json({ error: 'Cursa selectată nu există sau este indisponibilă.' });
-    }
-
-    if (Number(trip.boarding_started)) {
-      await conn.rollback();
-      conn.release();
-      return res.status(409).json({ error: 'Îmbarcarea a început pentru această cursă. Rezervările nu mai sunt disponibile.' });
     }
 
     const stationSeq = await loadTripStationSequences(conn, tripId);
